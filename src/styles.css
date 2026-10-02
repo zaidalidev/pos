@@ -134,6 +134,18 @@
     font-family: var(--font-sans);
     font-feature-settings: "tnum";
   }
+  /* Mobile dialogs: allow touch scrolling when the soft keyboard is open */
+  [role="dialog"] {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@utility scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @media print {

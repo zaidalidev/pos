@@ -3,6 +3,10 @@ import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import {
+  useScrollFocusedFieldIntoView,
+  useVisualViewportBoxStyle,
+} from "@/hooks/use-visual-viewport-box";
 
 const AlertDialog = AlertDialogPrimitive.Root;
 
@@ -28,19 +32,35 @@ AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName;
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
->(({ className, ...props }, ref) => (
-  <AlertDialogPortal>
-    <AlertDialogOverlay />
-    <AlertDialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed left-[50%] top-4 z-50 grid w-full max-w-lg max-h-[calc(100dvh-2rem)] translate-x-[-50%] translate-y-0 gap-4 overflow-y-auto overscroll-contain border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:top-[50%] sm:max-h-[calc(100dvh-4rem)] sm:translate-y-[-50%] sm:rounded-lg",
-        className,
-      )}
-      {...props}
-    />
-  </AlertDialogPortal>
-));
+>(({ className, style, ...props }, ref) => {
+  const [node, setNode] = React.useState<HTMLDivElement | null>(null);
+  const vvStyle = useVisualViewportBoxStyle();
+  useScrollFocusedFieldIntoView(node);
+
+  const setRefs = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      setNode(el);
+      if (typeof ref === "function") ref(el);
+      else if (ref) ref.current = el;
+    },
+    [ref],
+  );
+
+  return (
+    <AlertDialogPortal>
+      <AlertDialogOverlay />
+      <AlertDialogPrimitive.Content
+        ref={setRefs}
+        style={{ ...style, ...vvStyle }}
+        className={cn(
+          "fixed inset-x-4 top-4 z-50 grid w-auto max-w-lg max-h-[calc(100dvh-2rem)] gap-4 overflow-y-auto overscroll-contain touch-pan-y border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:inset-x-auto sm:left-[50%] sm:top-[50%] sm:w-full sm:max-h-[calc(100dvh-4rem)] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg",
+          className,
+        )}
+        {...props}
+      />
+    </AlertDialogPortal>
+  );
+});
 AlertDialogContent.displayName = AlertDialogPrimitive.Content.displayName;
 
 const AlertDialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

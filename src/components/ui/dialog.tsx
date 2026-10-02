@@ -5,6 +5,10 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import {
+  useScrollFocusedFieldIntoView,
+  useVisualViewportBoxStyle,
+} from "@/hooks/use-visual-viewport-box";
 
 const Dialog = DialogPrimitive.Root;
 
@@ -32,27 +36,43 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        // Mobile: top-anchored + max-height so keyboard doesn't trap the form;
-        // overflow-y-auto lets users scroll back to top fields after focusing bottom ones.
-        "fixed left-[50%] top-4 z-50 grid w-full max-w-lg max-h-[calc(100dvh-2rem)] translate-x-[-50%] translate-y-0 gap-4 overflow-y-auto overscroll-contain border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:top-[50%] sm:max-h-[calc(100dvh-4rem)] sm:translate-y-[-50%] sm:rounded-lg",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background cursor-pointer transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+>(({ className, children, style, ...props }, ref) => {
+  const [node, setNode] = React.useState<HTMLDivElement | null>(null);
+  const vvStyle = useVisualViewportBoxStyle();
+  useScrollFocusedFieldIntoView(node);
+
+  const setRefs = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      setNode(el);
+      if (typeof ref === "function") ref(el);
+      else if (ref) ref.current = el;
+    },
+    [ref],
+  );
+
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={setRefs}
+        style={{ ...style, ...vvStyle }}
+        className={cn(
+          // Mobile: inset-x (no translate) so full width stays on-screen.
+          // Desktop: centered with translate.
+          "fixed inset-x-4 top-4 z-50 grid w-auto max-w-lg max-h-[calc(100dvh-2rem)] gap-4 overflow-y-auto overscroll-contain touch-pan-y border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:inset-x-auto sm:left-[50%] sm:top-[50%] sm:w-full sm:max-h-[calc(100dvh-4rem)] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background cursor-pointer transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

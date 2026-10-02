@@ -388,17 +388,21 @@ export function AppLayout() {
         </header>
         <main className="mx-auto w-full flex-1 px-4 mt-2">
           {(pathname === "/reports" || pathname.startsWith("/reports/")) && (
-            <div className="mb-3 mt-4 flex flex-wrap gap-2">
-              {REPORT_NAV.map((r) => {
-                const active = r.to === "/reports/inventory"
-                  ? pathname === "/reports/inventory" || pathname.startsWith("/reports/inventory/")
-                  : pathname === r.to;
-                return (
-                  <Button key={r.to} asChild size="sm" variant={active ? "default" : "outline"}>
-                    <Link to={r.to}>{r.label}</Link>
-                  </Button>
-                );
-              })}
+            <div className="relative mb-3 mt-4">
+              <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-10 bg-gradient-to-r from-white to-transparent" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-white to-transparent" />
+              <div className="flex flex-nowrap gap-2 overflow-x-auto scrollbar-none">
+                {REPORT_NAV.map((r) => {
+                  const active = r.to === "/reports/inventory"
+                    ? pathname === "/reports/inventory" || pathname.startsWith("/reports/inventory/")
+                    : pathname === r.to;
+                  return (
+                    <Button key={r.to} asChild size="sm" variant={active ? "default" : "outline"} className={cn("shrink-0", !active && "bg-muted/60 hover:bg-muted")}>
+                      <Link to={r.to}>{r.label}</Link>
+                    </Button>
+                  );
+                })}
+              </div>
             </div>
           )}
           <Outlet />

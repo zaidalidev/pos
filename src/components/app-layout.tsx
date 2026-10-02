@@ -386,7 +386,7 @@ export function AppLayout() {
             </DropdownMenu>
           </div>
         </header>
-        <main className="mx-auto w-full flex-1 px-4 mt-4">
+        <main className="mx-auto w-full flex-1 px-4 mt-2">
           {(pathname === "/reports" || pathname.startsWith("/reports/")) && (
             <div className="mb-3 mt-4 flex flex-wrap gap-2">
               {REPORT_NAV.map((r) => {

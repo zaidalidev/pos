@@ -28,7 +28,6 @@ export function PageHeader({ title, description, titleAside, actions, back }: { 
             <h1 className="truncate text-xl font-bold tracking-tight">{title}</h1>
             {titleAside}
           </div>
-          {description && <p className="mt-0.5 truncate text-sm text-muted-foreground">{description}</p>}
         </div>
       </div>
       {actions && <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">{actions}</div>}

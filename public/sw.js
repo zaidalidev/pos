@@ -1,5 +1,5 @@
-/* ShopOnline PWA service worker — installability + light offline shell cache */
-const CACHE = "shoponline-v1";
+/* Dukan on Click PWA service worker — installability + light offline shell cache */
+const CACHE = "dukanonclick-v6";
 const PRECACHE = ["/", "/manifest.webmanifest", "/pwa-192x192.png", "/pwa-512x512.png"];
 
 self.addEventListener("install", (event) => {

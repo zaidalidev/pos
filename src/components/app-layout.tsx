@@ -18,6 +18,9 @@ import { actions, useDB, useSessionUser } from "@/lib/store";
 import { can, type PermModule } from "@/lib/permissions";
 import { rs } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { AppLogo } from "@/components/app-logo";
+import { APP_NAME } from "@/lib/branding";
+import { useShopFavicon } from "@/lib/use-shop-favicon";
 
 type To = keyof FileRoutesByTo;
 type NavItem = { label: string; icon: React.ComponentType<{ className?: string }>; to: To; module: PermModule | null };
@@ -107,13 +110,12 @@ function AppSidebar() {
     <Sidebar collapsible="icon" expandOnHover>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4 group-data-[collapsible=icon]:px-2">
         <Link to="/dashboard" onClick={close} className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center">
-          <img
-            src="/shoponline-logo.png"
-            alt="ShopOnline"
-            className="size-8 shrink-0 rounded-md object-cover object-left"
+          <AppLogo
+            logo={settings.shop.logo}
+            className="h-8 w-auto max-w-[132px] shrink-0 bg-transparent group-data-[collapsible=icon]:max-w-8 group-data-[collapsible=icon]:object-cover"
           />
           <div className="leading-tight group-data-[collapsible=icon]:hidden">
-            <p className="font-bold text-sidebar-accent-foreground">ShopOnline</p>
+            <p className="font-bold text-sidebar-accent-foreground">{APP_NAME}</p>
             <p className="max-w-[150px] truncate text-xs text-sidebar-foreground/70">{settings.shop.name}</p>
           </div>
         </Link>
@@ -296,6 +298,7 @@ export function AppLayout() {
     ? session.isPlatformAdmin || can(rolePermissions, session.role, "Settings", "View")
     : false;
   const viewingShop = viewingShopId ? shops.find((s) => s.id === viewingShopId) : null;
+  useShopFavicon(settings.shop.logo);
   useEffect(() => {
     document.documentElement.setAttribute("data-brand", settings.branding.theme);
   }, [settings.branding.theme]);

@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 import { Toaster } from "sonner";
 
 import { registerServiceWorker } from "@/lib/register-sw";
+import { APP_NAME } from "@/lib/branding";
 import appCss from "../styles.css?url";
 
 function NotFoundComponent() {
@@ -79,15 +80,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
-      { title: "ShopOnline — Simple POS & Inventory Management for Your Shop" },
+      { title: `${APP_NAME} — Simple POS & Inventory Management for Your Shop` },
       { name: "description", content: "Simple POS & Inventory Management for accessories shops in Pakistan." },
       { name: "theme-color", content: "#059669" },
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "default" },
-      { name: "apple-mobile-web-app-title", content: "ShopOnline" },
-      { name: "application-name", content: "ShopOnline" },
-      { property: "og:title", content: "ShopOnline" },
+      { name: "apple-mobile-web-app-title", content: APP_NAME },
+      { name: "application-name", content: APP_NAME },
+      { property: "og:title", content: APP_NAME },
       { property: "og:description", content: "Simple POS & Inventory Management for Your Shop" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

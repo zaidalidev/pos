@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { APP_NAME } from "@/lib/branding";
 
 export const rs = (n: number) => `Rs. ${Math.round(n || 0).toLocaleString("en-PK")}`;
 export const fmtDate = (iso: string) => format(new Date(iso), "dd MMM yyyy");
@@ -29,9 +30,9 @@ export function inRange(iso: string, r: Range) {
 
 export const pageHead = (title: string, description: string) => () => ({
   meta: [
-    { title: `${title} — ShopOnline` },
+    { title: `${title} — ${APP_NAME}` },
     { name: "description", content: description },
-    { property: "og:title", content: `${title} — ShopOnline` },
+    { property: "og:title", content: `${title} — ${APP_NAME}` },
     { property: "og:description", content: description },
   ],
 });

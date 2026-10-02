@@ -8,10 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field } from "@/components/shared";
 import { pageHead } from "@/lib/format";
+import { AppLogo } from "@/components/app-logo";
+import { APP_NAME } from "@/lib/branding";
 import { actions, getSessionUser, sessionHome } from "@/lib/store";
 
 export const Route = createFileRoute("/login")({
-  head: pageHead("Sign in", "Sign in to your ShopOnline account."),
+  head: pageHead("Sign in", `Sign in to your ${APP_NAME} account.`),
   beforeLoad: () => {
     const user = getSessionUser();
     if (user && user.status === "Active") {
@@ -31,7 +33,7 @@ function BrandPanel() {
   return (
     <div className="relative hidden flex-col justify-between overflow-hidden bg-primary p-10 text-primary-foreground lg:flex">
       <div className="flex items-center">
-        <img src="/shoponline-logo.png" alt="ShopOnline" className="h-12 w-auto rounded-md" />
+        <AppLogo className="h-12 w-auto max-w-[220px] bg-transparent" />
       </div>
       <div className="space-y-6">
         <h2 className="text-3xl font-bold leading-tight">Run you shop, effortlessly.</h2>
@@ -47,7 +49,7 @@ function BrandPanel() {
           ))}
         </ul>
       </div>
-      <p className="text-xs text-primary-foreground/60">© {new Date().getFullYear()} ShopOnline. All rights reserved.</p>
+      <p className="text-xs text-primary-foreground/60">© {new Date().getFullYear()} {APP_NAME}. All rights reserved.</p>
     </div>
   );
 }
@@ -96,9 +98,9 @@ function Login() {
       <div className="flex items-center justify-center bg-background p-6">
         <Card className="w-full max-w-sm border-none p-6 shadow-none sm:border sm:shadow-sm">
           <div className="mb-6 space-y-1 text-center">
-            <img src="/shoponline-logo.png" alt="ShopOnline" className="mx-auto mb-3 h-14 w-auto lg:hidden" />
+            <AppLogo className="mx-auto mb-3 h-14 w-auto max-w-[240px] lg:hidden" tone="dark" />
             <h1 className="text-xl font-bold tracking-tight">Welcome back</h1>
-            <p className="text-sm text-muted-foreground">Sign in to your ShopOnline account.</p>
+            <p className="text-sm text-muted-foreground">Sign in to your {APP_NAME} account.</p>
           </div>
           <form onSubmit={submit} className="space-y-4">
             <Field label="Email" error={errors.email}>

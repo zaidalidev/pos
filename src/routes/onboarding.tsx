@@ -4,7 +4,7 @@ import { EmptyState, PageHeader } from "@/components/shared";
 import { pageHead } from "@/lib/format";
 
 export const Route = createFileRoute("/onboarding")({
-  head: pageHead("onboarding", "onboarding in ShopOnline."),
+  head: pageHead("Onboarding", "Set up your shop in Dukan on Click."),
   component: () => (
     <div>
       <PageHeader title="onboarding" />

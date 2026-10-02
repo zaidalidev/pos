@@ -3,6 +3,8 @@ import { HandCoins, LayoutDashboard, LogOut, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { actions, usePlatform, useSessionUser } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { AppLogo } from "@/components/app-logo";
+import { APP_NAME } from "@/lib/branding";
 
 const NAV = [
   { label: "Overview", to: "/admin" as const, icon: LayoutDashboard, match: "exact" as const },
@@ -26,9 +28,9 @@ export function AdminLayout() {
       <header className="sticky top-0 z-20 border-b bg-background">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4">
           <div className="flex items-center gap-3">
-            <img src="/shoponline-logo.png" alt="ShopOnline" className="size-8 rounded-md object-cover object-left" />
+            <AppLogo className="h-8 w-auto max-w-[120px]" tone="dark" />
             <div className="leading-tight">
-              <p className="text-sm font-bold">ShopOnline Admin</p>
+              <p className="text-sm font-bold">{APP_NAME} Admin</p>
               <p className="text-xs text-muted-foreground">Platform console</p>
             </div>
           </div>

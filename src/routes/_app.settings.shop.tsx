@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Printer, Store, Upload, Wifi } from "lucide-react";
+import { Printer, Upload, Wifi } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AppLogo } from "@/components/app-logo";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Field, SimpleSelect, StatusBadge } from "@/components/shared";
@@ -16,6 +16,8 @@ import { pageHead, rs, fmtDateTime } from "@/lib/format";
 import { useDB, actions } from "@/lib/store";
 import { accountIdOf, BRAND_THEMES, type BrandTheme, type Sale } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { compressLogoFile } from "@/lib/image-compress";
+import { applyShopFavicon } from "@/lib/branding";
 
 export const Route = createFileRoute("/_app/settings/shop")({
   head: pageHead("Settings: shop", "Shop profile, invoice, tax and printer settings."),
@@ -57,17 +59,26 @@ function ShopSettingsPage() {
   const [testOpen, setTestOpen] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<"name" | "phone" | "email", string>>>({});
 
-  const initials = shop.name.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
   const sampleSale = db.sales[0] ?? PREVIEW_SALE;
   const previewSettings = { ...db.settings, shop, tax, invoice, printer, branding };
   const customerName = sampleSale.customerId ? db.customers.find((c) => c.id === sampleSale.customerId)?.name : "Walk-in";
 
-  const onLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    applyShopFavicon(shop.logo);
+    return () => applyShopFavicon(db.settings.shop.logo);
+  }, [shop.logo, db.settings.shop.logo]);
+
+  const onLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setShop((s) => ({ ...s, logo: String(reader.result) }));
-    reader.readAsDataURL(file);
+    try {
+      const logo = await compressLogoFile(file);
+      setShop((s) => ({ ...s, logo }));
+      toast.success("Logo updated — save to apply everywhere.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not upload logo.");
+    }
+    e.target.value = "";
   };
 
   const selectTheme = (theme: BrandTheme) => {
@@ -141,11 +152,16 @@ function ShopSettingsPage() {
         <div className="space-y-4">
           <Card className="shadow-none">
             <CardContent className="flex flex-col items-center gap-3 p-5">
-              <Avatar className="size-20">
-                <AvatarImage src={shop.logo} alt={shop.name} />
-                <AvatarFallback className="text-lg"><Store className="size-8" /></AvatarFallback>
-              </Avatar>
-              <p className="text-xs text-muted-foreground">{shop.logo ? "Logo uploaded" : `No logo — showing initials "${initials || "SF"}"`}</p>
+              {shop.logo ? (
+                <img src={shop.logo} alt={shop.name} className="size-20 rounded-full object-contain bg-transparent" />
+              ) : (
+                <AppLogo className="h-20 w-auto max-w-[160px]" tone="dark" />
+              )}
+              <p className="text-xs text-muted-foreground">
+                {shop.logo
+                  ? "Custom logo — used in sidebar, browser tab, and invoices."
+                  : "Default Dukan on Click logo — upload to replace."}
+              </p>
               <label className="w-full">
                 <Input type="file" accept="image/*" className="hidden" onChange={onLogo} />
                 <span className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border bg-card px-3 py-2 text-sm font-medium hover:bg-accent">

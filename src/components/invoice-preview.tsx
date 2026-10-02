@@ -1,4 +1,5 @@
-import { Download, Printer, Share2, Store } from "lucide-react";
+import { Download, Printer, Share2 } from "lucide-react";
+import { shopLogoUrl } from "@/lib/branding";
 import { jsPDF } from "jspdf";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -204,7 +205,7 @@ export function InvoicePreview({ sale, settings, customerName, showActions = tru
         <div className="text-center">
           {invoice.showLogo && (
             <div className="mx-auto mb-1 grid size-9 place-items-center rounded-full border">
-              {shop.logo ? <img src={shop.logo} alt="" className="size-9 rounded-full object-cover" /> : <Store className="size-4" />}
+              <img src={shopLogoUrl(shop.logo)} alt="" className="size-9 rounded-full object-cover" />
             </div>
           )}
           <p className="text-sm font-bold">{shop.name}</p>

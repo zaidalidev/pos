@@ -197,6 +197,99 @@ export function neonRootHasData(root: PersistRoot | null | undefined): boolean {
   return root.shops.length > 0 || root.allUsers.length > 0;
 }
 
+/** Lists that mean the shop actually has data. Default accounts alone do not count. */
+const SHOP_RECORD_KEYS = [
+  "products",
+  "categories",
+  "customers",
+  "suppliers",
+  "sales",
+  "purchases",
+  "expenses",
+  "staff",
+  "staffTxns",
+  "adjustments",
+  "saleReturns",
+  "purchaseReturns",
+] as const;
+
+function shopRecordCount(bag: PersistBag | undefined): number {
+  if (!bag) return 0;
+  let count = 0;
+  for (const key of SHOP_RECORD_KEYS) {
+    const list = bag[key];
+    if (Array.isArray(list)) count += list.length;
+  }
+  return count;
+}
+
+function unionById(primary: unknown, extra: unknown): unknown[] {
+  const first = Array.isArray(primary) ? primary : [];
+  const second = Array.isArray(extra) ? extra : [];
+  const seen = new Set<string>();
+  const out: unknown[] = [];
+  const push = (item: unknown, keepWithoutId: boolean) => {
+    if (item && typeof item === "object" && "id" in item && (item as { id?: unknown }).id != null && (item as { id?: unknown }).id !== "") {
+      const id = String((item as { id: unknown }).id);
+      if (seen.has(id)) return;
+      seen.add(id);
+      out.push(item);
+      return;
+    }
+    if (keepWithoutId) out.push(item);
+  };
+  for (const item of first) push(item, true);
+  for (const item of second) push(item, false);
+  return out;
+}
+
+/**
+ * Keep browser records when Neon has an empty or older bag.
+ * Same id prefers Neon; rows that exist only locally are kept.
+ */
+export function mergeBagWithLocal(remote: PersistBag | undefined, local: PersistBag | undefined): PersistBag | undefined {
+  if (!remote && !local) return undefined;
+  const remoteCount = shopRecordCount(remote);
+  const localCount = shopRecordCount(local);
+  if (remoteCount === 0 && localCount > 0) return local;
+  if (localCount === 0 || !local) return remote;
+  if (!remote) return local;
+
+  const merged: PersistBag = { ...remote };
+  const write = merged as Record<string, unknown>;
+  for (const key of SHOP_RECORD_KEYS) {
+    write[key] = unionById(remote[key], local[key]);
+  }
+  for (const key of ["accounts", "accountBalanceLogs", "notifications", "held"] as const) {
+    if (remote[key] || local[key]) write[key] = unionById(remote[key], local[key]);
+  }
+  const nextInvoice = Math.max(Number(remote["nextInvoice"]) || 0, Number(local["nextInvoice"]) || 0);
+  const nextPurchase = Math.max(Number(remote["nextPurchase"]) || 0, Number(local["nextPurchase"]) || 0);
+  if (nextInvoice) write["nextInvoice"] = nextInvoice;
+  if (nextPurchase) write["nextPurchase"] = nextPurchase;
+  return merged;
+}
+
+/** Merge Neon bags with the local cache for shops this login can see. */
+export function mergePulledBags(
+  remoteBags: Record<string, PersistBag>,
+  localBags: Record<string, PersistBag>,
+  shopIds: string[],
+): { bags: Record<string, PersistBag>; keptLocalRecords: boolean } {
+  const bags: Record<string, PersistBag> = {};
+  let keptLocalRecords = false;
+  const ids = new Set([...shopIds, ...Object.keys(remoteBags)]);
+  for (const id of ids) {
+    const remote = remoteBags[id];
+    const local = localBags[id];
+    const merged = mergeBagWithLocal(remote, local);
+    if (!merged) continue;
+    bags[id] = merged;
+    if (shopRecordCount(merged) > shopRecordCount(remote)) keptLocalRecords = true;
+  }
+  return { bags, keptLocalRecords };
+}
+
 type SyncResult = { ok: true } | { ok: false; error: string };
 
 async function deleteMissing(
@@ -303,8 +396,8 @@ export async function pushRootToNeon(raw: PersistRoot): Promise<SyncResult> {
 const NEON_DEBOUNCE_MS = 700;
 let neonTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingRoot: PersistRoot | null = null;
-let syncing = false;
-let queued: PersistRoot | null = null;
+let drainPromise: Promise<void> | null = null;
+let lastResult: SyncResult | null = null;
 
 /** Debounced Neon push — coalesces rapid POS updates. */
 export function scheduleNeonSync(root: PersistRoot) {
@@ -317,38 +410,47 @@ export function scheduleNeonSync(root: PersistRoot) {
   }, NEON_DEBOUNCE_MS);
 }
 
-export async function flushNeonSync(): Promise<SyncResult | null> {
+/** Push whatever is pending. Resolves only when the queue is idle. */
+async function drainNeonSync(): Promise<void> {
+  try {
+    // Data API requires a JWT; skip quiet no-ops when logged out.
+    const session = await getNeonSession();
+    if (!session?.user) {
+      pendingRoot = null;
+      return;
+    }
+    while (pendingRoot) {
+      const next = pendingRoot;
+      pendingRoot = null;
+      const result = await pushRootToNeon(next);
+      if (!result.ok) console.warn("[neon-sync] push failed:", result.error);
+      lastResult = result;
+    }
+  } finally {
+    drainPromise = null;
+    // A save landed after the loop check; keep the same callers waiting via flushNeonSync's follow-up.
+    if (pendingRoot && isNeonDataConfigured()) {
+      drainPromise = drainNeonSync();
+    }
+  }
+}
+
+/**
+ * Push the latest root and wait until that push finishes.
+ * Logout must await this before sign-out, or the session dies mid-push and the bag never lands.
+ */
+export function flushNeonSync(): Promise<SyncResult | null> {
   if (neonTimer) {
     clearTimeout(neonTimer);
     neonTimer = null;
   }
-  const next = pendingRoot;
-  pendingRoot = null;
-  if (!next || !isNeonDataConfigured()) return null;
+  if (!isNeonDataConfigured()) return Promise.resolve(null);
+  if (!pendingRoot && !drainPromise) return Promise.resolve(lastResult);
 
-  // Data API requires a JWT; skip quiet no-ops when logged out.
-  const session = await getNeonSession();
-  if (!session?.user) return null;
-
-  if (syncing) {
-    queued = next;
-    return null;
-  }
-
-  syncing = true;
-  try {
-    let current: PersistRoot | null = next;
-    let last: SyncResult = { ok: true };
-    while (current) {
-      last = await pushRootToNeon(current);
-      if (!last.ok) {
-        console.warn("[neon-sync] push failed:", last.error);
-      }
-      current = queued;
-      queued = null;
-    }
-    return last;
-  } finally {
-    syncing = false;
-  }
+  if (!drainPromise) drainPromise = drainNeonSync();
+  const waited = drainPromise;
+  return waited.then(() => {
+    if (pendingRoot || drainPromise) return flushNeonSync();
+    return lastResult;
+  });
 }

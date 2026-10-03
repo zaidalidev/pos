@@ -113,6 +113,7 @@ function ExpensesPage() {
     });
     toast.success(dialog.mode === "add" ? "Expense added." : "Expense updated.");
     setDialog(null);
+    setQ("");
   };
 
   const cols: Column<Expense>[] = [

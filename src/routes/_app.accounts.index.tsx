@@ -83,6 +83,7 @@ function AccountsPage() {
     actions.saveAccount({ ...dialog.data, ...(dialog.id ? { id: dialog.id } : {}) });
     toast.success(dialog.mode === "add" ? "Account added." : "Account updated.");
     setDialog(null);
+    setQ("");
   };
 
   const saveBalance = () => {
@@ -230,7 +231,14 @@ function AccountsPage() {
           rows={rows}
           rowKey={(a) => a.id}
           onRowClick={(a) => navigate({ to: "/accounts/$id", params: { id: a.id } })}
-          empty={<EmptyState icon={Landmark} title="No accounts yet." description="Add cash, bank or wallet accounts to track balances." action={<Button onClick={() => { setDialog({ mode: "add", data: empty() }); setErrors({}); }}><Plus className="size-4" />Add Account</Button>} />}
+          empty={
+            <EmptyState
+              icon={Landmark}
+              title={q ? "No accounts match your search." : "No accounts yet."}
+              description={q ? "Try a different name, type, number or phone." : "Add cash, bank or wallet accounts to track balances."}
+              action={!q ? <Button onClick={() => { setDialog({ mode: "add", data: empty() }); setErrors({}); }}><Plus className="size-4" />Add Account</Button> : undefined}
+            />
+          }
         />
       </Card>
 

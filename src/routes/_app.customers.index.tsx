@@ -82,6 +82,10 @@ function CustomersPage() {
     actions.saveCustomer({ ...dialog.data, ...(dialog.id ? { id: dialog.id } : {}) });
     toast.success(dialog.mode === "add" ? "Customer added." : "Customer updated.");
     setDialog(null);
+    setQ("");
+    setPhoneFilter("all");
+    setCityFilter("all");
+    setPaidFilter("all");
   };
 
   const cols: Column<Customer>[] = [
@@ -182,7 +186,14 @@ function CustomersPage() {
           </div>
         </FilterBar>
         <DataTable loading={loading} columns={cols} rows={rows} rowKey={(c) => c.id} pageSize={10} onRowClick={(c) => navigate({ to: "/customers/$id", params: { id: c.id } })}
-          empty={<EmptyState icon={Users} title="No customers yet." description="Add your first customer to start tracking sales and balances." action={<Button onClick={() => setDialog({ mode: "add", data: empty })}><Plus className="size-4" />Add Customer</Button>} />} />
+          empty={
+            <EmptyState
+              icon={Users}
+              title={q || phoneFilter !== "all" || cityFilter !== "all" || paidFilter !== "all" ? "No customers match your filters." : "No customers yet."}
+              description={q || phoneFilter !== "all" || cityFilter !== "all" || paidFilter !== "all" ? "Try a different search or filter." : "Add your first customer to start tracking sales and balances."}
+              action={!(q || phoneFilter !== "all" || cityFilter !== "all" || paidFilter !== "all") ? <Button onClick={() => { setDialog({ mode: "add", data: empty }); setErrors({}); }}><Plus className="size-4" />Add Customer</Button> : undefined}
+            />
+          } />
       </Card>
 
       <Dialog open={!!dialog} onOpenChange={(o) => !o && setDialog(null)}>

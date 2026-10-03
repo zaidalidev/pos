@@ -101,6 +101,7 @@ function CategoriesPage() {
       dialog.mode === "add-cat" ? "Category added." : dialog.mode === "add-sub" ? "Subcategory added." : "Category updated.",
     );
     setDialog(null);
+    setQ("");
   };
 
   const askDelete = (c: Category) => {

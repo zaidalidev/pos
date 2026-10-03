@@ -58,6 +58,7 @@ function SuppliersPage() {
     actions.saveSupplier({ ...dialog.data, id: dialog.id });
     toast.success(dialog.mode === "add" ? "Supplier added." : "Supplier updated.");
     setDialog(null);
+    setQ("");
   };
 
   const cols: Column<Supplier>[] = [
@@ -130,7 +131,14 @@ function SuppliersPage() {
           </div>
         </FilterBar>
         <DataTable loading={loading} columns={cols} rows={rows} rowKey={(s) => s.id} onRowClick={(s) => navigate({ to: "/suppliers/$id", params: { id: s.id } })}
-          empty={<EmptyState icon={Truck} title="No suppliers yet." description="Add your first supplier to start recording purchases." action={<Button onClick={() => setDialog({ mode: "add", data: empty })}><Plus className="size-4" />Add Supplier</Button>} />} />
+          empty={
+            <EmptyState
+              icon={Truck}
+              title={q ? "No suppliers match your search." : "No suppliers yet."}
+              description={q ? "Try a different name, phone or city." : "Add your first supplier to start recording purchases."}
+              action={!q ? <Button onClick={() => { setDialog({ mode: "add", data: empty }); setErrors({}); }}><Plus className="size-4" />Add Supplier</Button> : undefined}
+            />
+          } />
       </Card>
 
       <Dialog open={!!dialog} onOpenChange={(o) => !o && setDialog(null)}>

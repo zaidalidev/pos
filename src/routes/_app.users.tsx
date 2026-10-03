@@ -132,6 +132,9 @@ function UsersPage() {
           : "User updated.",
       );
       setDialog(null);
+      setQ("");
+      setRoleFilter("all");
+      setStatusFilter("all");
     } finally {
       setSaving(false);
     }
@@ -240,9 +243,9 @@ function UsersPage() {
               empty={
                 <EmptyState
                   icon={UsersRound}
-                  title="No users found."
-                  description="Add a staff account to control access across the shop."
-                  action={<Button onClick={openAdd}><Plus className="size-4" />Add User</Button>}
+                  title={q || roleFilter !== "all" || statusFilter !== "all" ? "No users match your filters." : "No users yet."}
+                  description={q || roleFilter !== "all" || statusFilter !== "all" ? "Try a different search or filter." : "Add a staff account to control access across the shop."}
+                  action={!(q || roleFilter !== "all" || statusFilter !== "all") ? <Button onClick={openAdd}><Plus className="size-4" />Add User</Button> : undefined}
                 />
               }
             />

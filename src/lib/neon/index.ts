@@ -19,6 +19,7 @@ export {
 } from "./session";
 export {
   flushNeonSync,
+  mergePulledBags,
   neonRootHasData,
   pullRootFromNeon,
   pushRootToNeon,

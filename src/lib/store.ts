@@ -22,6 +22,7 @@ import {
   flushNeonSync,
   getNeonSession,
   isNeonDataConfigured,
+  mergePulledBags,
   neonAdminCreateUser,
   neonAdminSetPassword,
   neonChangePassword,
@@ -270,6 +271,28 @@ function replaceRoot(next: RootState, opts?: { persistLocal?: boolean; syncNeon?
   listeners.forEach((l) => l());
 }
 
+/**
+ * Apply a Neon pull without letting an empty server bag wipe records that only exist in this browser.
+ * Local-only rows are pushed back up on the next sync.
+ */
+function adoptPulledRoot(pulled: PersistRoot) {
+  const local = toPersistRoot(root);
+  const { bags, keptLocalRecords } = mergePulledBags(
+    pulled.bags,
+    local.bags,
+    pulled.shops.map((s) => s.id),
+  );
+  const { state, changed } = hydrateFromPersist({
+    shops: pulled.shops,
+    bags: bags as Record<string, Partial<ShopBag>>,
+    allUsers: pulled.allUsers.length ? pulled.allUsers : local.allUsers,
+    platformFees: pulled.platformFees.length ? pulled.platformFees : local.platformFees,
+    sessionUserId: null,
+    viewingShopId: null,
+  });
+  replaceRoot(state, { persistLocal: true, syncNeon: changed || keptLocalRecords });
+}
+
 function provisionPlatformAdmin(auth: { id: string; email: string; name: string }): M.User {
   const existing = root.allUsers.find(
     (u) => u.email.toLowerCase() === auth.email.trim().toLowerCase(),
@@ -475,15 +498,7 @@ export async function hydrateAuthSession(): Promise<void> {
       try {
         const pulled = await pullRootFromNeon();
         if (neonRootHasData(pulled)) {
-          const { state, changed } = hydrateFromPersist({
-            shops: pulled!.shops,
-            bags: pulled!.bags as Record<string, Partial<ShopBag>>,
-            allUsers: pulled!.allUsers,
-            platformFees: pulled!.platformFees,
-            sessionUserId: null,
-            viewingShopId: null,
-          });
-          replaceRoot(state, { persistLocal: true, syncNeon: changed });
+          adoptPulledRoot(pulled!);
         } else {
           // Neon empty — one-time migrate from localStorage cache.
           const local = loadPersistedRoot();
@@ -1268,15 +1283,7 @@ export const actions = {
       try {
         const pulled = await pullRootFromNeon();
         if (neonRootHasData(pulled)) {
-          const { state, changed } = hydrateFromPersist({
-            shops: pulled!.shops,
-            bags: pulled!.bags as Record<string, Partial<ShopBag>>,
-            allUsers: pulled!.allUsers,
-            platformFees: pulled!.platformFees,
-            sessionUserId: null,
-            viewingShopId: null,
-          });
-          replaceRoot(state, { persistLocal: true, syncNeon: changed });
+          adoptPulledRoot(pulled!);
         }
       } catch (err) {
         console.warn("[neon-sync] login pull failed", err);

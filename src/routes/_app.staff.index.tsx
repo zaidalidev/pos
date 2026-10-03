@@ -106,6 +106,7 @@ function StaffPage() {
     toast.success(dialog.mode === "add" ? "Staff member added." : "Staff updated.");
     setDialog(null);
     setQ("");
+    setStatusFilter("all");
   };
 
   const saveTxn = () => {
@@ -278,9 +279,9 @@ function StaffPage() {
           empty={
             <EmptyState
               icon={UsersRound}
-              title="No staff yet."
-              description="Add staff to track salaries, advances and remaining payments."
-              action={<Button onClick={() => { setDialog({ mode: "add", data: empty() }); setErrors({}); }}><Plus className="size-4" />Add Staff</Button>}
+              title={q || statusFilter !== "all" ? "No staff match your filters." : "No staff yet."}
+              description={q || statusFilter !== "all" ? "Try a different search or filter." : "Add staff to track salaries, advances and remaining payments."}
+              action={!(q || statusFilter !== "all") ? <Button onClick={() => { setDialog({ mode: "add", data: empty() }); setErrors({}); }}><Plus className="size-4" />Add Staff</Button> : undefined}
             />
           }
         />

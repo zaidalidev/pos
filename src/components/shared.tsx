@@ -25,7 +25,6 @@ export function PageHeader({ title, description, titleAside, actions, back }: { 
         {back && <div className="shrink-0">{back}</div>}
         <div className="min-w-0 w-full flex-1">
           <div className="flex w-full flex-wrap items-center gap-2">
-            <h1 className="truncate text-xl font-bold tracking-tight">{title}</h1>
             {titleAside}
           </div>
         </div>

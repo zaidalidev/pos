@@ -16,15 +16,22 @@ import {
   pruneBag,
   RETENTION,
   schedulePersist,
+  type PersistRoot,
 } from "./persist";
 import {
+  flushNeonSync,
   getNeonSession,
+  isNeonDataConfigured,
   neonAdminCreateUser,
   neonAdminSetPassword,
   neonChangePassword,
+  neonRootHasData,
   neonSignIn,
   neonSignOut,
   neonSignUp,
+  pullRootFromNeon,
+  pushRootToNeon,
+  scheduleNeonSync,
 } from "./neon";
 
 const AUTH_KEY_LEGACY = "shopflow-auth-v1";
@@ -233,16 +240,64 @@ function loadRoot(): RootState {
   return seedRoot();
 }
 
-function saveRoot(r: RootState) {
-  schedulePersist({
+function toPersistRoot(r: RootState): PersistRoot {
+  return {
     shops: r.shops,
-    bags: r.bags as Record<string, import("./persist").PersistBag>,
+    bags: r.bags as PersistRoot["bags"],
     allUsers: r.allUsers,
     platformFees: r.platformFees,
     sessionUserId: r.sessionUserId,
     viewingShopId: r.viewingShopId,
     currentUser: r.currentUser,
-  });
+  };
+}
+
+function saveRoot(r: RootState) {
+  const persistRoot = toPersistRoot(r);
+  schedulePersist(persistRoot);
+  scheduleNeonSync(persistRoot);
+}
+
+function replaceRoot(next: RootState, opts?: { persistLocal?: boolean; syncNeon?: boolean }) {
+  root = next;
+  invalidateSnapshots();
+  if (opts?.persistLocal !== false) {
+    schedulePersist(toPersistRoot(root));
+  }
+  if (opts?.syncNeon) {
+    scheduleNeonSync(toPersistRoot(root));
+  }
+  listeners.forEach((l) => l());
+}
+
+function provisionPlatformAdmin(auth: { id: string; email: string; name: string }): M.User {
+  const existing = root.allUsers.find(
+    (u) => u.email.toLowerCase() === auth.email.trim().toLowerCase(),
+  );
+  if (existing) {
+    const linked = root.allUsers.map((u) =>
+      u.id === existing.id
+        ? { ...u, authId: auth.id, isPlatformAdmin: true, shopId: null, password: "" }
+        : u,
+    );
+    replaceRoot({ ...root, allUsers: linked }, { syncNeon: true });
+    return linked.find((u) => u.id === existing.id)!;
+  }
+  const user: M.User = {
+    id: uid("u"),
+    name: auth.name || "Platform Admin",
+    email: auth.email.trim(),
+    phone: "",
+    role: "Owner",
+    status: "Active",
+    password: "",
+    lastLogin: "",
+    shopId: null,
+    isPlatformAdmin: true,
+    authId: auth.id,
+  };
+  replaceRoot({ ...root, allUsers: [...root.allUsers, user] }, { syncNeon: true });
+  return user;
 }
 
 /** Cap noisy lists in memory so UI stays snappy (same limits as disk). */
@@ -405,7 +460,7 @@ function applyLocalSession(user: M.User, authId?: string) {
 }
 
 /**
- * Sync Neon Auth cookie session → local store sessionUserId.
+ * Sync Neon Auth cookie session → store, and pull shop data from Neon Data API.
  * Call once on app boot before trusting route guards.
  */
 export async function hydrateAuthSession(): Promise<void> {
@@ -415,7 +470,48 @@ export async function hydrateAuthSession(): Promise<void> {
       if (root.sessionUserId) clearLocalSession();
       return;
     }
-    const local = findLocalUserByAuth(session.user.id, session.user.email);
+
+    if (isNeonDataConfigured()) {
+      try {
+        const pulled = await pullRootFromNeon();
+        if (neonRootHasData(pulled)) {
+          const { state, changed } = hydrateFromPersist({
+            shops: pulled!.shops,
+            bags: pulled!.bags as Record<string, Partial<ShopBag>>,
+            allUsers: pulled!.allUsers,
+            platformFees: pulled!.platformFees,
+            sessionUserId: null,
+            viewingShopId: null,
+          });
+          replaceRoot(state, { persistLocal: true, syncNeon: changed });
+        } else {
+          // Neon empty — one-time migrate from localStorage cache.
+          const local = loadPersistedRoot();
+          if (local && neonRootHasData(local)) {
+            const { state } = hydrateFromPersist({
+              shops: local.shops,
+              bags: local.bags as Record<string, Partial<ShopBag>>,
+              allUsers: local.allUsers,
+              platformFees: local.platformFees,
+              sessionUserId: null,
+              viewingShopId: null,
+            });
+            replaceRoot(state, { persistLocal: true });
+            const pushed = await pushRootToNeon(toPersistRoot(state));
+            if (!pushed.ok) {
+              console.warn("[neon-sync] local→Neon migration failed:", pushed.error);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[neon-sync] hydrate pull failed; using local cache", err);
+      }
+    }
+
+    let local = findLocalUserByAuth(session.user.id, session.user.email);
+    if (!local && M.isPlatformAdminEmail(session.user.email)) {
+      local = provisionPlatformAdmin(session.user);
+    }
     if (!local) {
       // Neon session without a shop profile — keep Neon signed in but no app session.
       clearLocalSession({ flush: true });
@@ -436,7 +532,10 @@ function commitRoot(next: RootState, opts?: { flush?: boolean }) {
   root = next;
   invalidateSnapshots();
   saveRoot(root);
-  if (opts?.flush) flushPersist();
+  if (opts?.flush) {
+    flushPersist();
+    void flushNeonSync();
+  }
   listeners.forEach((l) => l());
 }
 
@@ -1165,7 +1264,29 @@ export const actions = {
     const auth = await neonSignIn(email, password, rememberMe);
     if (!auth.ok) return auth;
 
-    const user = findLocalUserByAuth(auth.data.id, auth.data.email);
+    if (isNeonDataConfigured()) {
+      try {
+        const pulled = await pullRootFromNeon();
+        if (neonRootHasData(pulled)) {
+          const { state, changed } = hydrateFromPersist({
+            shops: pulled!.shops,
+            bags: pulled!.bags as Record<string, Partial<ShopBag>>,
+            allUsers: pulled!.allUsers,
+            platformFees: pulled!.platformFees,
+            sessionUserId: null,
+            viewingShopId: null,
+          });
+          replaceRoot(state, { persistLocal: true, syncNeon: changed });
+        }
+      } catch (err) {
+        console.warn("[neon-sync] login pull failed", err);
+      }
+    }
+
+    let user = findLocalUserByAuth(auth.data.id, auth.data.email);
+    if (!user && M.isPlatformAdminEmail(auth.data.email)) {
+      user = provisionPlatformAdmin(auth.data);
+    }
     if (!user) {
       await neonSignOut();
       return {
@@ -1194,6 +1315,7 @@ export const actions = {
     return { ok: true, user: next };
   },
   async logout() {
+    await flushNeonSync();
     await neonSignOut();
     clearLocalSession({ flush: true });
   },
@@ -1348,7 +1470,8 @@ export const actions = {
       bags: { ...root.bags, [shopId]: emptyShopBag(settings) },
       allUsers: [...root.allUsers, user],
       platformFees,
-    });
+    }, { flush: true });
+    await flushNeonSync();
     return { ok: true, shopId };
   },
   setShopMonthlyFee(shopId: string, monthlyFee: number): { ok: true } | { ok: false; error: string } {
@@ -1423,6 +1546,7 @@ export const actions = {
       viewingShopId: null,
       currentUser: user.name,
     }, { flush: true });
+    await flushNeonSync();
     setAuthReady(true);
     return { ok: true };
   },

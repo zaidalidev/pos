@@ -120,19 +120,15 @@ function normalizeBag(bag: Partial<ShopBag> | undefined): ShopBag {
   return { ...emptyShopBag(), ...(bag ?? {}) };
 }
 
-/** Drop seeded demo shops, orphan test shops (no users), and related fees/bags. */
+/** Drop legacy seeded demo shops only — never auto-remove live/orphan shops. */
 function stripDemoShop(state: RootState): { state: RootState; changed: boolean } {
-  const linkedShopIds = new Set(
-    state.allUsers.map((u) => u.shopId).filter((id): id is string => !!id),
-  );
   const removeIds = new Set(
     state.shops
       .filter(
         (s) =>
           s.id === M.DEMO_SHOP_ID ||
           s.email?.toLowerCase() === "owner@demoshop.pk" ||
-          s.name === "Demo Accessories" ||
-          !linkedShopIds.has(s.id),
+          s.name === "Demo Accessories",
       )
       .map((s) => s.id),
   );
@@ -202,8 +198,8 @@ function loadRoot(): RootState {
         ...split,
         bags: split.bags as Record<string, Partial<ShopBag>>,
       });
-      // Persist stripped demo so it does not come back on next load.
-      if (changed) saveRoot(state);
+      // Persist stripped demo locally only — never push cleanup deletes to Neon.
+      if (changed) schedulePersist(toPersistRoot(state));
       return state;
     }
 
@@ -282,7 +278,7 @@ function adoptPulledRoot(pulled: PersistRoot) {
     local.bags,
     pulled.shops.map((s) => s.id),
   );
-  const { state, changed } = hydrateFromPersist({
+  const { state } = hydrateFromPersist({
     shops: pulled.shops,
     bags: bags as Record<string, Partial<ShopBag>>,
     allUsers: pulled.allUsers.length ? pulled.allUsers : local.allUsers,
@@ -290,7 +286,8 @@ function adoptPulledRoot(pulled: PersistRoot) {
     sessionUserId: null,
     viewingShopId: null,
   });
-  replaceRoot(state, { persistLocal: true, syncNeon: changed || keptLocalRecords });
+  // Only push when this browser has records Neon lacks — never sync strip/cleanup alone.
+  replaceRoot(state, { persistLocal: true, syncNeon: keptLocalRecords });
 }
 
 function provisionPlatformAdmin(auth: { id: string; email: string; name: string }): M.User {

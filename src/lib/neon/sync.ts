@@ -292,29 +292,6 @@ export function mergePulledBags(
 
 type SyncResult = { ok: true } | { ok: false; error: string };
 
-async function deleteMissing(
-  table: "shops" | "profiles" | "platform_fees" | "shop_bags",
-  idColumn: "id" | "shop_id",
-  keepIds: string[],
-): Promise<string | null> {
-  const { data, error } = await neon.from(table).select(idColumn);
-  if (error) return errMessage(error, `Failed to list ${table} for sync.`);
-  const existing = (data ?? [])
-    .map((row) => {
-      const rec = row as unknown as Record<string, unknown>;
-      const value = rec[idColumn];
-      return typeof value === "string" ? value : null;
-    })
-    .filter((id): id is string => !!id);
-  const keep = new Set(keepIds);
-  const toDelete = existing.filter((id) => !keep.has(id));
-  for (const id of toDelete) {
-    const del = await neon.from(table).delete().eq(idColumn, id);
-    if (del.error) return errMessage(del.error, `Failed to delete stale ${table} row.`);
-  }
-  return null;
-}
-
 /** Upsert full app root to Neon (debounced from the store). */
 export async function pushRootToNeon(raw: PersistRoot): Promise<SyncResult> {
   if (!isNeonDataConfigured()) {
@@ -353,43 +330,15 @@ export async function pushRootToNeon(raw: PersistRoot): Promise<SyncResult> {
     }
   }
 
-  if (bagRows.length) {
-    const { error } = await neon.from("shop_bags").upsert(bagRows, { onConflict: "shop_id" });
+  // Upsert bags that actually hold records — never overwrite Neon with an empty bag.
+  const bagsToUpsert = bagRows.filter((row) => shopRecordCount(row.data) > 0);
+  if (bagsToUpsert.length) {
+    const { error } = await neon.from("shop_bags").upsert(bagsToUpsert, { onConflict: "shop_id" });
     if (error) return { ok: false, error: errMessage(error, "Failed to sync shop data.") };
   }
 
-  // Remove rows deleted locally (visible set under RLS only)
-  const bagErr = await deleteMissing(
-    "shop_bags",
-    "shop_id",
-    bagRows.map((b) => b.shop_id),
-  );
-  if (bagErr) return { ok: false, error: bagErr };
-
-  const feeErr = await deleteMissing(
-    "platform_fees",
-    "id",
-    feeRows.map((f) => f.id),
-  );
-  if (feeErr && !/permission|policy|rls|403|42501/i.test(feeErr)) {
-    return { ok: false, error: feeErr };
-  }
-
-  const profileErr = await deleteMissing(
-    "profiles",
-    "id",
-    profileRows.map((p) => p.id),
-  );
-  if (profileErr) return { ok: false, error: profileErr };
-
-  // Delete shops last (cascades bags)
-  const shopErr = await deleteMissing(
-    "shops",
-    "id",
-    shopRows.map((s) => s.id),
-  );
-  if (shopErr) return { ok: false, error: shopErr };
-
+  // Upsert-only sync: do not delete Neon rows that are missing from this client.
+  // Aggressive deleteMissing wiped live shops/bags when local state was partial (e.g. after strip).
   return { ok: true };
 }
 

@@ -30,6 +30,7 @@ function CustomersPage() {
   const [q, setQ] = useState("");
   const [phoneFilter, setPhoneFilter] = useState("all");
   const [cityFilter, setCityFilter] = useState("all");
+  const [paidFilter, setPaidFilter] = useState("all");
   const [dialog, setDialog] = useState<{ mode: "add" | "edit"; data: Form; id?: string } | null>(null);
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({});
   const [del, setDel] = useState<Customer | null>(null);
@@ -52,8 +53,13 @@ function CustomersPage() {
     if (q && !`${c.name} ${c.phone} ${c.city}`.toLowerCase().includes(q.toLowerCase())) return false;
     if (phoneFilter !== "all" && c.phone !== phoneFilter) return false;
     if (cityFilter !== "all" && c.city !== cityFilter) return false;
+    if (paidFilter !== "all") {
+      const due = customerStats(db, c.id).due;
+      if (paidFilter === "paid" && due > 0) return false;
+      if (paidFilter === "unpaid" && due <= 0) return false;
+    }
     return true;
-  }), [db, q, phoneFilter, cityFilter]);
+  }), [db, q, phoneFilter, cityFilter, paidFilter]);
 
   const totals = useMemo(() => {
     const stats = db.customers.map((c) => customerStats(db, c.id));
@@ -158,6 +164,17 @@ function CustomersPage() {
             className="sm:w-40"
             placeholder="All cities"
             options={[{ value: "all", label: "All cities" }, ...cityFilters.map((c) => ({ value: c, label: c }))]}
+          />
+          <SearchableSelect
+            value={paidFilter}
+            onChange={setPaidFilter}
+            className="sm:w-36"
+            placeholder="All statuses"
+            options={[
+              { value: "all", label: "All statuses" },
+              { value: "paid", label: "Paid" },
+              { value: "unpaid", label: "Unpaid" },
+            ]}
           />
           <div className="flex gap-2 sm:ml-auto">
             <Button variant="outline" onClick={doPdf}><FileText className="size-4" />PDF</Button>

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { AlertTriangle, Cable, CalendarIcon, Check, ChevronsUpDown, ChevronLeft, ChevronRight, Headphones, Inbox, Package, Plug, Plus, Search, ShieldCheck, Smartphone, BatteryCharging, Watch, MonitorSmartphone, Ear } from "lucide-react";
+import { AlertTriangle, Cable, CalendarIcon, Check, ChevronsUpDown, ChevronLeft, ChevronRight, Copy, Headphones, Inbox, Package, Plug, Plus, Search, ShieldCheck, Smartphone, BatteryCharging, Watch, MonitorSmartphone, Ear } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -122,6 +123,39 @@ export function SearchInput({ value, onChange, placeholder = "Search...", classN
         type="search"
       />
     </div>
+  );
+}
+
+/** Invoice / purchase number with a one-click copy control. */
+export function CopyableText({ value, className }: { value: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy(e: ReactMouseEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      toast.success("Copied");
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Could not copy");
+    }
+  }
+
+  return (
+    <span className={cn("inline-flex items-center gap-1.5", className)}>
+      <span className="font-semibold text-primary">{value}</span>
+      <button
+        type="button"
+        onClick={copy}
+        title={copied ? "Copied" : "Copy"}
+        aria-label={copied ? "Copied" : `Copy ${value}`}
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+      </button>
+    </span>
   );
 }
 

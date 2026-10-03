@@ -56,7 +56,6 @@ function NewPurchase() {
   const [accountId, setAccountId] = useState(defaultAccountId);
   const [paid, setPaid] = useState(0);
   const [notes, setNotes] = useState("");
-  const [skipPaidSync, setSkipPaidSync] = useState(false);
   const [editLoaded, setEditLoaded] = useState(false);
   const [supplierDialog, setSupplierDialog] = useState<SupplierDialog | null>(null);
   const [supplierErrors, setSupplierErrors] = useState<Partial<Record<"name" | "phone" | "city", string>>>({});
@@ -82,7 +81,6 @@ function NewPurchase() {
     setAccountId(accountIdOfPurchase(editing, creditAccountId));
     setPaid(editing.paid);
     setNotes(editing.notes);
-    setSkipPaidSync(true);
     setEditLoaded(true);
   }, [editId, editing, editingBlocked, editLoaded, navigate, creditAccountId]);
 
@@ -97,11 +95,10 @@ function NewPurchase() {
   const isCredit = isCreditAccount(db, accountId);
   const dueAmt = isCredit ? total : Math.max(0, total - paid);
 
+  // Credit account = unpaid; otherwise leave paid as user entered (default 0 / Unpaid)
   useEffect(() => {
-    if (skipPaidSync) { setSkipPaidSync(false); return; }
     if (isCredit) setPaid(0);
-    else setPaid(total);
-  }, [total, isCredit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isCredit]);
 
   const addLine = (productId: string) => {
     if (!productId) return;
@@ -357,7 +354,7 @@ function NewPurchase() {
               <Field label="Paid amount" hint={paid < total ? `Due will be ${rs(Math.max(0, total - paid))}` : undefined}>
                 <CurrencyInput
                   value={paid}
-                  onChange={(n) => { setSkipPaidSync(true); setPaid(n); }}
+                  onChange={setPaid}
                 />
               </Field>
             )}

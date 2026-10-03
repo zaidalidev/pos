@@ -5,7 +5,7 @@ import { AlertCircle, BadgePercent, ChartNoAxesColumn, CircleCheck, Eye, FileTex
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { DataTable, DateRangePicker, EmptyState, FilterBar, PageHeader, SearchInput, SearchableSelect, StatCard, StatusBadge, useFakeLoading, type Column } from "@/components/shared";
+import { CopyableText, DataTable, DateRangePicker, EmptyState, FilterBar, PageHeader, SearchInput, SearchableSelect, StatCard, StatusBadge, useFakeLoading, type Column } from "@/components/shared";
 import { downloadInvoicePdf } from "@/components/invoice-preview";
 import { PaymentDialog } from "@/components/payment-dialog";
 import { actions, saleDue, saleReturnedStats, useDB } from "@/lib/store";
@@ -69,7 +69,7 @@ function SalesPage() {
   }, [rows, returnsBySale, db.saleReturns]);
 
   const cols: Column<Sale>[] = [
-    { key: "inv", header: "Invoice #", cell: (s) => <span className="font-semibold text-primary">{s.invoiceNo}</span> },
+    { key: "inv", header: "Invoice #", cell: (s) => <CopyableText value={s.invoiceNo} /> },
     { key: "date", header: "Date", cell: (s) => (
       <div className="whitespace-nowrap text-sm">
         <p>{fmtDateTime(s.date)}</p>

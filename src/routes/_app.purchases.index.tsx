@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { DataTable, DateRangePicker, EmptyState, FilterBar, PageHeader, SearchInput, SearchableSelect, StatCard, StatusBadge, useFakeLoading, type Column } from "@/components/shared";
+import { CopyableText, DataTable, DateRangePicker, EmptyState, FilterBar, PageHeader, SearchInput, SearchableSelect, StatCard, StatusBadge, useFakeLoading, type Column } from "@/components/shared";
 import { PaymentDialog } from "@/components/payment-dialog";
 import { actions, due, useDB } from "@/lib/store";
 import { fmtDateTime, inRange, pageHead, rs, supplierName, type Range } from "@/lib/format";
@@ -65,7 +65,7 @@ function PurchasesPage() {
   }, [rows, db.purchaseReturns]);
 
   const cols: Column<Purchase>[] = [
-    { key: "no", header: "Purchase #", cell: (p) => <span className="font-semibold text-primary">{p.no}</span> },
+    { key: "no", header: "Purchase #", cell: (p) => <CopyableText value={p.no} /> },
     { key: "date", header: "Date", cell: (p) => (
       <div className="whitespace-nowrap text-sm">
         <p>{fmtDateTime(p.date)}</p>

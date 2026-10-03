@@ -110,12 +110,15 @@ export type User = {
   phone: string;
   role: Role;
   status: "Active" | "Inactive";
+  /** Local placeholder only — real credentials live in Neon Auth. */
   password: string;
   lastLogin: string;
   /** Shop this user belongs to. null for platform Super Admin. */
   shopId: string | null;
   /** Developer / platform admin — can see all tenants. */
   isPlatformAdmin?: boolean;
+  /** Neon Auth user id when linked. */
+  authId?: string;
 };
 export const STAFF_ROLES = ["Manager", "Cashier", "Salesman", "Helper", "Delivery", "Other"] as const;
 export type StaffRole = (typeof STAFF_ROLES)[number];
@@ -211,49 +214,39 @@ export const saleReturns: SaleReturn[] = [];
 export const purchaseReturns: PurchaseReturn[] = [];
 export const notifications: AppNotification[] = [];
 
+/** Legacy id — stripped on hydrate so old localStorage demo shops disappear. */
 export const DEMO_SHOP_ID = "shop-demo";
 
-export const shops: Shop[] = [
-  {
-    id: DEMO_SHOP_ID,
-    name: "Demo Accessories",
-    phone: "03001234567",
-    email: "owner@demoshop.pk",
-    city: "Karachi",
-    status: "Active",
-    plan: "Business",
-    createdAt: new Date().toISOString(),
-  },
-];
+/** Emails that always get app `/admin` access (local `isPlatformAdmin`). */
+export const PLATFORM_ADMIN_EMAILS = [
+  "zaidalidev0@gmail.com",
+] as const;
+
+export function isPlatformAdminEmail(email: string): boolean {
+  const normalized = email.trim().toLowerCase();
+  return PLATFORM_ADMIN_EMAILS.some((e) => e === normalized);
+}
+
+/** No seeded shops — admin / fees start empty until real shops are created. */
+export const shops: Shop[] = [];
 
 export const users: User[] = [
   {
     id: "u-admin",
     name: "Platform Admin",
-    email: "admin@shopflow.pk",
+    email: "zaidalidev0@gmail.com",
     phone: "03000000000",
     role: "Owner",
     status: "Active",
-    password: "admin1234",
+    password: "",
     lastLogin: "",
     shopId: null,
     isPlatformAdmin: true,
   },
-  {
-    id: "u1",
-    name: "Zaid Ali",
-    email: "owner@demoshop.pk",
-    phone: "03001234567",
-    role: "Owner",
-    status: "Active",
-    password: "demo1234",
-    lastLogin: new Date().toISOString(),
-    shopId: DEMO_SHOP_ID,
-  },
 ];
 
 export const settings: Settings = {
-  shop: { name: "Demo Accessories", phone: "03001234567", email: "owner@demoshop.pk", address: "", city: "Karachi", currency: "PKR", taxNumber: "" },
+  shop: { name: "My Shop", phone: "", email: "", address: "", city: "", currency: "PKR", taxNumber: "" },
   invoice: { prefix: "INV", startNumber: 1001, showLogo: true, showPhone: true, showAddress: true, footer: "Thank you for shopping with us!", terms: "" },
   tax: { enabled: false, rate: 0 },
   printer: { type: "Thermal", paperSize: "80mm Roll", width: "80mm", autoPrint: false, connected: false },

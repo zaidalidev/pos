@@ -1,5 +1,5 @@
 /**
- * Lean list helpers — same shape you'll want with Supabase
+ * Lean list helpers — same shape you'll want with Neon Data API
  * (filter + page on the server; here we do it in memory cheaply).
  */
 

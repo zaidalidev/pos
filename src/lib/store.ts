@@ -17,6 +17,15 @@ import {
   RETENTION,
   schedulePersist,
 } from "./persist";
+import {
+  getNeonSession,
+  neonAdminCreateUser,
+  neonAdminSetPassword,
+  neonChangePassword,
+  neonSignIn,
+  neonSignOut,
+  neonSignUp,
+} from "./neon";
 
 const AUTH_KEY_LEGACY = "shopflow-auth-v1";
 
@@ -75,19 +84,22 @@ export function emptyShopBag(settings?: M.Settings): ShopBag {
 }
 
 function normalizeUser(u: M.User & { shopId?: string | null; isPlatformAdmin?: boolean }): M.User {
-  return {
+  const isAdmin = !!u.isPlatformAdmin || M.isPlatformAdminEmail(u.email);
+  const next: M.User = {
     ...u,
-    password: u.password || "demo1234",
-    shopId: u.isPlatformAdmin ? null : (u.shopId ?? M.DEMO_SHOP_ID),
-    isPlatformAdmin: !!u.isPlatformAdmin,
+    password: u.password || "",
+    shopId: isAdmin ? null : (u.shopId ?? null),
+    isPlatformAdmin: isAdmin,
   };
+  if (u.authId) next.authId = u.authId;
+  else delete next.authId;
+  return next;
 }
 
 function seedRoot(): RootState {
-  const demoBag = emptyShopBag(M.settings);
   return {
     shops: M.shops.map((s) => ({ ...s })),
-    bags: { [M.DEMO_SHOP_ID]: demoBag },
+    bags: {},
     allUsers: M.users.map((u) => normalizeUser(u)),
     platformFees: [],
     sessionUserId: null,
@@ -100,6 +112,44 @@ function normalizeBag(bag: Partial<ShopBag> | undefined): ShopBag {
   return { ...emptyShopBag(), ...(bag ?? {}) };
 }
 
+/** Drop seeded demo shops, orphan test shops (no users), and related fees/bags. */
+function stripDemoShop(state: RootState): { state: RootState; changed: boolean } {
+  const linkedShopIds = new Set(
+    state.allUsers.map((u) => u.shopId).filter((id): id is string => !!id),
+  );
+  const removeIds = new Set(
+    state.shops
+      .filter(
+        (s) =>
+          s.id === M.DEMO_SHOP_ID ||
+          s.email?.toLowerCase() === "owner@demoshop.pk" ||
+          s.name === "Demo Accessories" ||
+          !linkedShopIds.has(s.id),
+      )
+      .map((s) => s.id),
+  );
+  const hadDemoBag = !!state.bags[M.DEMO_SHOP_ID];
+  if (removeIds.size === 0 && !hadDemoBag) return { state, changed: false };
+
+  const shops = state.shops.filter((s) => !removeIds.has(s.id));
+  const bags = { ...state.bags };
+  for (const id of removeIds) delete bags[id];
+  delete bags[M.DEMO_SHOP_ID];
+  const allUsers = state.allUsers.filter(
+    (u) =>
+      !removeIds.has(u.shopId ?? "") &&
+      u.email?.toLowerCase() !== "owner@demoshop.pk" &&
+      u.id !== "u1",
+  );
+  const platformFees = (state.platformFees ?? []).filter((f) => !removeIds.has(f.shopId));
+  const viewingShopId =
+    state.viewingShopId && bags[state.viewingShopId] ? state.viewingShopId : null;
+  return {
+    state: { ...state, shops, bags, allUsers, platformFees, viewingShopId },
+    changed: true,
+  };
+}
+
 function hydrateFromPersist(data: {
   shops: M.Shop[];
   bags: Record<string, Partial<ShopBag>>;
@@ -108,20 +158,21 @@ function hydrateFromPersist(data: {
   sessionUserId: string | null;
   viewingShopId: string | null;
   currentUser?: string;
-}): RootState {
+}): { state: RootState; changed: boolean } {
   const seed = seedRoot();
   const allUsers = (data.allUsers?.length ? data.allUsers : seed.allUsers).map(normalizeUser);
   const sessionUser = allUsers.find((u) => u.id === data.sessionUserId);
-  const shops = data.shops?.length ? data.shops : seed.shops;
-  const rawBags = data.bags && Object.keys(data.bags).length ? data.bags : seed.bags;
+  // Prefer persisted shops even when empty — never re-inject seed demo shops.
+  const shops = Array.isArray(data.shops) ? data.shops : seed.shops;
+  const rawBags = data.bags && typeof data.bags === "object" ? data.bags : seed.bags;
   const bags: Record<string, ShopBag> = {};
   for (const shop of shops) {
     bags[shop.id] = pruneBag(normalizeBag(rawBags[shop.id]));
   }
   for (const [id, bag] of Object.entries(rawBags)) {
-    if (!bags[id]) bags[id] = pruneBag(normalizeBag(bag));
+    if (!bags[id] && id !== M.DEMO_SHOP_ID) bags[id] = pruneBag(normalizeBag(bag));
   }
-  return {
+  return stripDemoShop({
     shops,
     bags,
     allUsers,
@@ -131,7 +182,7 @@ function hydrateFromPersist(data: {
     sessionUserId: sessionUser ? data.sessionUserId : null,
     viewingShopId: data.viewingShopId && bags[data.viewingShopId] ? data.viewingShopId : null,
     currentUser: sessionUser?.name ?? data.currentUser ?? "Guest",
-  };
+  });
 }
 
 function loadRoot(): RootState {
@@ -139,13 +190,16 @@ function loadRoot(): RootState {
   try {
     const split = loadPersistedRoot();
     if (split) {
-      return hydrateFromPersist({
+      const { state, changed } = hydrateFromPersist({
         ...split,
         bags: split.bags as Record<string, Partial<ShopBag>>,
       });
+      // Persist stripped demo so it does not come back on next load.
+      if (changed) saveRoot(state);
+      return state;
     }
 
-    // Migrate legacy single-tenant auth blob into demo shop bag
+    // Migrate legacy single-tenant auth blob (users/settings only — no demo shop).
     const legacy = localStorage.getItem(AUTH_KEY_LEGACY);
     if (legacy) {
       const old = JSON.parse(legacy) as {
@@ -155,16 +209,12 @@ function loadRoot(): RootState {
         settings?: M.Settings;
       };
       const seeded = seedRoot();
-      const demoBag = seeded.bags[M.DEMO_SHOP_ID] ?? emptyShopBag();
-      if (old.settings) demoBag.settings = old.settings;
-      if (old.rolePermissions) demoBag.rolePermissions = old.rolePermissions;
-      seeded.bags[M.DEMO_SHOP_ID] = pruneBag(demoBag);
       if (old.users?.length) {
         const migrated = old.users.map((u) =>
           normalizeUser({
             ...u,
-            shopId: u.email === "admin@shopflow.pk" ? null : M.DEMO_SHOP_ID,
-            isPlatformAdmin: u.email === "admin@shopflow.pk",
+            shopId: M.isPlatformAdminEmail(u.email) ? null : (u.shopId ?? null),
+            isPlatformAdmin: M.isPlatformAdminEmail(u.email),
           }),
         );
         const hasAdmin = migrated.some((u) => u.isPlatformAdmin);
@@ -175,7 +225,7 @@ function loadRoot(): RootState {
       const sessionUser = seeded.allUsers.find((u) => u.id === old.sessionUserId);
       seeded.sessionUserId = sessionUser ? old.sessionUserId ?? null : null;
       seeded.currentUser = sessionUser?.name ?? "Guest";
-      return seeded;
+      return stripDemoShop(seeded).state;
     }
   } catch {
     /* fall through */
@@ -286,9 +336,100 @@ const subscribe = (cb: () => void) => {
 let cachedState: State | null = null;
 let cachedPlatform: PlatformView | null = null;
 
+/** Gates route redirects until Neon session has been synced into the local store. */
+let authReady = false;
+const authListeners = new Set<() => void>();
+
+function setAuthReady(ready: boolean) {
+  if (authReady === ready) return;
+  authReady = ready;
+  authListeners.forEach((l) => l());
+}
+
+export function getAuthReady() {
+  return authReady;
+}
+
+export function useAuthReady() {
+  return useSyncExternalStore(
+    (cb) => {
+      authListeners.add(cb);
+      return () => authListeners.delete(cb);
+    },
+    () => authReady,
+    () => false,
+  );
+}
+
 function invalidateSnapshots() {
   cachedState = null;
   cachedPlatform = null;
+}
+
+function clearLocalSession(opts?: { flush?: boolean }) {
+  commitRoot(
+    { ...root, sessionUserId: null, viewingShopId: null, currentUser: "Guest" },
+    { flush: opts?.flush ?? true },
+  );
+}
+
+function findLocalUserByAuth(authId: string, email: string): M.User | undefined {
+  const byAuth = root.allUsers.find((u) => u.authId && u.authId === authId);
+  if (byAuth) return byAuth;
+  return root.allUsers.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
+}
+
+function applyLocalSession(user: M.User, authId?: string) {
+  const asAdmin = M.isPlatformAdminEmail(user.email);
+  const linked = root.allUsers.map((u) => {
+    if (u.id !== user.id) return u;
+    return {
+      ...u,
+      ...(authId && u.authId !== authId ? { authId } : {}),
+      lastLogin: now(),
+      ...(asAdmin ? { isPlatformAdmin: true as const, shopId: null } : {}),
+    };
+  });
+  const nextUser = linked.find((u) => u.id === user.id) ?? user;
+  commitRoot(
+    {
+      ...root,
+      allUsers: linked,
+      sessionUserId: nextUser.id,
+      viewingShopId: null,
+      currentUser: nextUser.name,
+    },
+    { flush: true },
+  );
+  return nextUser;
+}
+
+/**
+ * Sync Neon Auth cookie session → local store sessionUserId.
+ * Call once on app boot before trusting route guards.
+ */
+export async function hydrateAuthSession(): Promise<void> {
+  try {
+    const session = await getNeonSession();
+    if (!session?.user) {
+      if (root.sessionUserId) clearLocalSession();
+      return;
+    }
+    const local = findLocalUserByAuth(session.user.id, session.user.email);
+    if (!local) {
+      // Neon session without a shop profile — keep Neon signed in but no app session.
+      clearLocalSession({ flush: true });
+      return;
+    }
+    if (local.status !== "Active") {
+      await neonSignOut();
+      clearLocalSession();
+      return;
+    }
+    applyLocalSession(local, session.user.id);
+  } finally {
+    setAuthReady(true);
+  }
 }
 
 function commitRoot(next: RootState, opts?: { flush?: boolean }) {
@@ -473,7 +614,8 @@ export function accountStats(s: State, accountId: string) {
       if (p.accountId !== accountId) continue;
       ledger.push({
         id: p.id, date: p.date, kind: "Sale payment", reference: sale.invoiceNo, note: p.note ?? "",
-        inflow: p.amount, outflow: 0, editedAt: sale.editedAt,
+        inflow: p.amount, outflow: 0,
+        ...(sale.editedAt ? { editedAt: sale.editedAt } : {}),
       });
     }
   }
@@ -482,7 +624,8 @@ export function accountStats(s: State, accountId: string) {
       if (p.accountId !== accountId) continue;
       ledger.push({
         id: p.id, date: p.date, kind: "Purchase payment", reference: pur.no, note: p.note ?? "",
-        inflow: 0, outflow: p.amount, editedAt: pur.editedAt,
+        inflow: 0, outflow: p.amount,
+        ...(pur.editedAt ? { editedAt: pur.editedAt } : {}),
       });
     }
   }
@@ -514,7 +657,7 @@ export function accountStats(s: State, accountId: string) {
       note: `${fmtOpening(log.previous)} → ${fmtOpening(log.next)}${log.by ? ` · ${log.by}` : ""}`,
       inflow: delta > 0 ? delta : 0,
       outflow: delta < 0 ? -delta : 0,
-      editedAt: log.kind === "edit" ? log.date : undefined,
+      ...(log.kind === "edit" ? { editedAt: log.date } : {}),
       openingAdj: true,
     });
   }
@@ -921,40 +1064,87 @@ export const actions = {
   deleteExpense(id: string) {
     setState((s) => ({ expenses: s.expenses.filter((e) => e.id !== id) }));
   },
-  saveUser(u: Omit<M.User, "id" | "lastLogin" | "password" | "shopId" | "isPlatformAdmin"> & { id?: string; password?: string }) {
-    setState((s) => {
-      if (u.id) {
-        return {
-          users: s.users.map((x) => {
-            if (x.id !== u.id) return x;
-            const next: M.User = {
-              ...x,
-              ...u,
-              id: x.id,
-              password: u.password || x.password,
-              shopId: x.shopId,
-              isPlatformAdmin: false,
-            };
-            return next;
-          }),
-          currentUser: s.sessionUserId === u.id ? (u.name ?? s.currentUser) : s.currentUser,
-        };
+  saveUser(
+    u: Omit<M.User, "id" | "lastLogin" | "password" | "shopId" | "isPlatformAdmin"> & {
+      id?: string;
+      password?: string;
+      authId?: string;
+    },
+  ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+    return (async () => {
+      const shopId = activeShopIdOf(root);
+      if (!shopId && !u.id) {
+        return { ok: false, error: "No active shop to attach this user to." };
       }
-      if (!u.password) throw new Error("Password is required for new users.");
-      return {
-        users: [
-          ...s.users,
-          {
-            ...u,
-            password: u.password,
-            id: uid("u"),
-            lastLogin: "",
-            shopId: s.activeShopId,
-            isPlatformAdmin: false,
-          },
-        ],
+
+      if (u.id) {
+        const existing = root.allUsers.find((x) => x.id === u.id);
+        if (!existing) return { ok: false, error: "User not found." };
+
+        if (u.password) {
+          if (!existing.authId) {
+            return {
+              ok: false,
+              error:
+                "This user is not linked to Neon Auth yet. Create a new login or ask them to sign up.",
+            };
+          }
+          const pw = await neonAdminSetPassword(existing.authId, u.password);
+          if (!pw.ok) return pw;
+        }
+
+        commitRoot({
+          ...root,
+          allUsers: root.allUsers.map((x) => {
+            if (x.id !== u.id) return x;
+            return {
+              ...x,
+              name: u.name,
+              email: u.email,
+              phone: u.phone,
+              role: u.role,
+              status: u.status,
+              // Password is stored in Neon — keep local field empty / unchanged marker.
+              password: "",
+            };
+          }),
+          currentUser:
+            root.sessionUserId === u.id ? u.name : root.currentUser,
+        });
+        return { ok: true, id: u.id };
+      }
+
+      if (!u.password) return { ok: false, error: "Password is required for new users." };
+
+      // Requires Neon Auth admin role on the signed-in account (Console → Make admin).
+      const created = await neonAdminCreateUser({
+        email: u.email,
+        password: u.password,
+        name: u.name,
+      });
+      if (!created.ok) return created;
+
+      if (root.allUsers.some((x) => x.email.toLowerCase() === u.email.trim().toLowerCase())) {
+        return { ok: false, error: "Email already in use." };
+      }
+
+      const id = uid("u");
+      const user: M.User = {
+        id,
+        name: u.name.trim(),
+        email: u.email.trim(),
+        phone: u.phone.trim(),
+        role: u.role,
+        status: u.status,
+        password: "",
+        lastLogin: "",
+        shopId: shopId!,
+        isPlatformAdmin: false,
+        authId: created.data.id,
       };
-    });
+      commitRoot({ ...root, allUsers: [...root.allUsers, user] });
+      return { ok: true, id };
+    })();
   },
   deleteUser(id: string) {
     setState((s) => ({
@@ -967,27 +1157,45 @@ export const actions = {
   saveRolePermissions(perms: RolePermissions) {
     setState(() => ({ rolePermissions: perms }));
   },
-  login(email: string, password: string): { ok: true; user: M.User } | { ok: false; error: string } {
-    const user = root.allUsers.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
-    if (!user) return { ok: false, error: "No account found with this email." };
-    if (user.status !== "Active") return { ok: false, error: "This account is inactive. Contact the owner." };
-    if (user.password !== password) return { ok: false, error: "Incorrect password." };
+  async login(
+    email: string,
+    password: string,
+    rememberMe = true,
+  ): Promise<{ ok: true; user: M.User } | { ok: false; error: string }> {
+    const auth = await neonSignIn(email, password, rememberMe);
+    if (!auth.ok) return auth;
+
+    const user = findLocalUserByAuth(auth.data.id, auth.data.email);
+    if (!user) {
+      await neonSignOut();
+      return {
+        ok: false,
+        error: "No shop account found for this email. Ask the owner to add you in Users.",
+      };
+    }
+    if (user.status !== "Active") {
+      await neonSignOut();
+      return { ok: false, error: "This account is inactive. Contact the owner." };
+    }
     if (!user.isPlatformAdmin && user.shopId) {
       const shop = root.shops.find((s) => s.id === user.shopId);
-      if (!shop) return { ok: false, error: "Shop not found for this account." };
-      if (shop.status === "Suspended") return { ok: false, error: "This shop is suspended. Contact support." };
+      if (!shop) {
+        await neonSignOut();
+        return { ok: false, error: "Shop not found for this account." };
+      }
+      if (shop.status === "Suspended") {
+        await neonSignOut();
+        return { ok: false, error: "This shop is suspended. Contact support." };
+      }
     }
-    commitRoot({
-      ...root,
-      sessionUserId: user.id,
-      viewingShopId: null,
-      currentUser: user.name,
-      allUsers: root.allUsers.map((u) => (u.id === user.id ? { ...u, lastLogin: now() } : u)),
-    }, { flush: true });
-    return { ok: true, user };
+
+    const next = applyLocalSession(user, auth.data.id);
+    setAuthReady(true);
+    return { ok: true, user: next };
   },
-  logout() {
-    commitRoot({ ...root, sessionUserId: null, viewingShopId: null, currentUser: "Guest" }, { flush: true });
+  async logout() {
+    await neonSignOut();
+    clearLocalSession({ flush: true });
   },
   enterShop(shopId: string): { ok: true } | { ok: false; error: string } {
     const user = getSessionUser();
@@ -1027,8 +1235,10 @@ export const actions = {
       month: input.month,
       amount,
       status: input.status,
-      paidAt: input.status === "Paid" ? (existing?.status === "Paid" && existing.paidAt ? existing.paidAt : now()) : undefined,
-      note: input.note?.trim() || undefined,
+      ...(input.status === "Paid"
+        ? { paidAt: existing?.status === "Paid" && existing.paidAt ? existing.paidAt : now() }
+        : {}),
+      ...(input.note?.trim() ? { note: input.note.trim() } : {}),
     };
     commitRoot({
       ...root,
@@ -1045,7 +1255,7 @@ export const actions = {
     });
   },
   /** Platform admin creates a shop + owner login without switching session. */
-  createShop(input: {
+  async createShop(input: {
     shopName: string;
     ownerName: string;
     email: string;
@@ -1058,12 +1268,20 @@ export const actions = {
     initialFeeStatus?: M.PlatformFeeStatus;
     initialFeeMonth?: string;
     initialFeeNote?: string;
-  }): { ok: true; shopId: string } | { ok: false; error: string } {
+  }): Promise<{ ok: true; shopId: string } | { ok: false; error: string }> {
     const admin = getSessionUser();
     if (!admin?.isPlatformAdmin) return { ok: false, error: "Only platform admin can create shops." };
     if (root.allUsers.some((u) => u.email.toLowerCase() === input.email.trim().toLowerCase())) {
       return { ok: false, error: "An account with this email already exists." };
     }
+
+    const created = await neonAdminCreateUser({
+      email: input.email,
+      password: input.password,
+      name: input.ownerName,
+    });
+    if (!created.ok) return created;
+
     const shopId = uid("shop");
     const userId = uid("u");
     const plan = input.plan ?? "Starter";
@@ -1079,8 +1297,8 @@ export const actions = {
       city: (input.city ?? "").trim(),
       status: "Active",
       plan,
-      monthlyFee,
       createdAt: now(),
+      ...(typeof monthlyFee === "number" ? { monthlyFee } : {}),
     };
     const settings = M.defaultSettings({
       name: shop.name,
@@ -1096,10 +1314,11 @@ export const actions = {
       phone: input.phone.trim(),
       role: "Owner",
       status: "Active",
-      password: input.password,
+      password: "",
       lastLogin: "",
       shopId,
       isPlatformAdmin: false,
+      authId: created.data.id,
     };
     let platformFees = root.platformFees ?? [];
     if (input.initialFeeStatus) {
@@ -1117,8 +1336,8 @@ export const actions = {
           month,
           amount,
           status: input.initialFeeStatus,
-          paidAt: input.initialFeeStatus === "Paid" ? now() : undefined,
-          note: input.initialFeeNote?.trim() || undefined,
+          ...(input.initialFeeStatus === "Paid" ? { paidAt: now() } : {}),
+          ...(input.initialFeeNote?.trim() ? { note: input.initialFeeNote.trim() } : {}),
         },
         ...platformFees,
       ];
@@ -1144,16 +1363,24 @@ export const actions = {
     });
     return { ok: true };
   },
-  signup(input: {
+  async signup(input: {
     shopName: string;
     ownerName: string;
     email: string;
     phone: string;
     password: string;
-  }): { ok: true } | { ok: false; error: string } {
+  }): Promise<{ ok: true } | { ok: false; error: string }> {
     if (root.allUsers.some((u) => u.email.toLowerCase() === input.email.trim().toLowerCase())) {
       return { ok: false, error: "An account with this email already exists." };
     }
+
+    const auth = await neonSignUp({
+      email: input.email,
+      password: input.password,
+      name: input.ownerName,
+    });
+    if (!auth.ok) return auth;
+
     const shopId = uid("shop");
     const userId = uid("u");
     const shop: M.Shop = {
@@ -1173,6 +1400,7 @@ export const actions = {
       city: shop.city,
       plan: shop.plan,
     });
+    const platformAdmin = M.isPlatformAdminEmail(input.email);
     const user: M.User = {
       id: userId,
       name: input.ownerName.trim(),
@@ -1180,29 +1408,40 @@ export const actions = {
       phone: input.phone.trim(),
       role: "Owner",
       status: "Active",
-      password: input.password,
+      password: "",
       lastLogin: now(),
-      shopId,
-      isPlatformAdmin: false,
+      shopId: platformAdmin ? null : shopId,
+      isPlatformAdmin: platformAdmin,
+      authId: auth.data.id,
     };
     commitRoot({
       ...root,
-      shops: [...root.shops, shop],
-      bags: { ...root.bags, [shopId]: emptyShopBag(settings) },
+      shops: platformAdmin ? root.shops : [...root.shops, shop],
+      bags: platformAdmin ? root.bags : { ...root.bags, [shopId]: emptyShopBag(settings) },
       allUsers: [...root.allUsers, user],
       sessionUserId: userId,
       viewingShopId: null,
       currentUser: user.name,
-    });
+    }, { flush: true });
+    setAuthReady(true);
     return { ok: true };
   },
-  changePassword(userId: string, current: string, next: string): { ok: true } | { ok: false; error: string } {
+  async changePassword(
+    userId: string,
+    current: string,
+    next: string,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
     const user = root.allUsers.find((u) => u.id === userId);
     if (!user) return { ok: false, error: "User not found." };
-    if (user.password !== current) return { ok: false, error: "Current password is incorrect." };
+    const session = getSessionUser();
+    if (!session || session.id !== userId) {
+      return { ok: false, error: "You can only change your own password." };
+    }
+    const result = await neonChangePassword(current, next);
+    if (!result.ok) return result;
     commitRoot({
       ...root,
-      allUsers: root.allUsers.map((u) => (u.id === userId ? { ...u, password: next } : u)),
+      allUsers: root.allUsers.map((u) => (u.id === userId ? { ...u, password: "" } : u)),
     });
     return { ok: true };
   },

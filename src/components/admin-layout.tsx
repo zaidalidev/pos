@@ -18,8 +18,8 @@ export function AdminLayout() {
   const session = useSessionUser();
   const platform = usePlatform();
 
-  const logout = () => {
-    actions.logout();
+  const logout = async () => {
+    await actions.logout();
     navigate({ to: "/login" });
   };
 

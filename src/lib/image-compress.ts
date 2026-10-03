@@ -1,4 +1,4 @@
-/** Compress product photos before they hit localStorage / future Supabase Storage. */
+/** Compress product photos before they hit localStorage / future Neon Storage. */
 
 const MAX_EDGE = 720;
 const JPEG_QUALITY = 0.72;
@@ -27,7 +27,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 
 /**
  * Resize + JPEG-encode an image file to a small data URL.
- * Keeps localStorage (and later Supabase egress) small.
+ * Keeps localStorage (and later Neon egress) small.
  */
 export async function compressImageFile(file: File): Promise<string> {
   if (!file.type.startsWith("image/")) throw new Error("Please choose an image file");

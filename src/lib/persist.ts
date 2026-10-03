@@ -2,7 +2,7 @@
  * Lean local persistence for ShopFlow.
  * - Splits session / meta / per-shop bags so one write does not rewrite everything
  * - Debounces disk writes during rapid POS updates
- * - Caps ephemeral collections so localStorage (and future Supabase sync) stays small
+ * - Caps ephemeral collections so localStorage (and future Neon sync) stays small
  * - Migrates the old monolith key shopflow-auth-v2 once
  */
 

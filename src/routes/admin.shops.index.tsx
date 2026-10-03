@@ -116,13 +116,13 @@ function AdminShops() {
     return e;
   };
 
-  const submitCreate = (e: React.FormEvent) => {
+  const submitCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     const next = validate(form);
     setErrors(next);
     if (Object.keys(next).length) return;
 
-    const res = actions.createShop({
+    const res = await actions.createShop({
       shopName: form.shopName,
       ownerName: form.ownerName,
       email: form.email,

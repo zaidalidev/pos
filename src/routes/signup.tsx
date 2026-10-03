@@ -60,9 +60,10 @@ function Signup() {
   const [confirm, setConfirm] = useState("");
   const [terms, setTerms] = useState(false);
   const [showPw, setShowPw] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const next: Errors = {};
     if (!shopName.trim()) next.shopName = "Shop name is required.";
@@ -75,14 +76,19 @@ function Signup() {
     setErrors(next);
     if (Object.keys(next).length) return;
 
-    const result = actions.signup({ shopName, ownerName, email, phone, password });
-    if (!result.ok) {
-      setErrors({ form: result.error, email: result.error });
-      toast.error(result.error);
-      return;
+    setBusy(true);
+    try {
+      const result = await actions.signup({ shopName, ownerName, email, phone, password });
+      if (!result.ok) {
+        setErrors({ form: result.error, email: result.error });
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Account created. Let's set up your shop.");
+      navigate({ to: "/onboarding" });
+    } finally {
+      setBusy(false);
     }
-    toast.success("Account created. Let's set up your shop.");
-    navigate({ to: "/onboarding" });
   };
 
   return (
@@ -131,7 +137,9 @@ function Signup() {
               {errors.terms && <p className="mt-1 text-xs text-destructive">{errors.terms}</p>}
             </div>
             {errors.form && <p className="text-sm text-destructive">{errors.form}</p>}
-            <Button type="submit" className="w-full">Create account</Button>
+            <Button type="submit" className="w-full" disabled={busy}>
+              {busy ? "Creating…" : "Create account"}
+            </Button>
           </form>
           <p className="mt-6 text-center text-sm text-muted-foreground">
             Already have an account? <Link to="/login" className="font-medium text-primary hover:underline">Sign in</Link>

@@ -11,6 +11,7 @@ import { pageHead } from "@/lib/format";
 import { AppLogo } from "@/components/app-logo";
 import { APP_NAME } from "@/lib/branding";
 import { actions, getSessionUser, sessionHome } from "@/lib/store";
+import { isNeonConfigured } from "@/lib/neon";
 
 export const Route = createFileRoute("/login")({
   head: pageHead("Sign in", `Sign in to your ${APP_NAME} account.`),
@@ -60,36 +61,33 @@ function Login() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [remember, setRemember] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const next: typeof errors = {};
     if (!/^\S+@\S+\.\S+$/.test(email)) next.email = "Enter a valid email address.";
     if (password.length < 6) next.password = "Password must be at least 6 characters.";
+    if (!isNeonConfigured()) {
+      next.form = "Neon Auth is not configured. Add VITE_NEON_AUTH_URL to .env.";
+    }
     setErrors(next);
     if (Object.keys(next).length) return;
 
-    const result = actions.login(email, password);
-    if (!result.ok) {
-      setErrors({ form: result.error });
-      toast.error(result.error);
-      return;
+    setBusy(true);
+    try {
+      const result = await actions.login(email, password, remember);
+      if (!result.ok) {
+        setErrors({ form: result.error });
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`Welcome back, ${result.user.name.split(" ")[0]}.`);
+      navigate({ to: sessionHome() as "/dashboard" });
+    } finally {
+      setBusy(false);
     }
-    toast.success(`Welcome back, ${result.user.name.split(" ")[0]}.`);
-    navigate({ to: sessionHome() as "/dashboard" });
-  };
-
-  const useDemo = () => {
-    setEmail("owner@demoshop.pk");
-    setPassword("demo1234");
-    setErrors({});
-  };
-
-  const useAdmin = () => {
-    setEmail("admin@shopflow.pk");
-    setPassword("admin1234");
-    setErrors({});
   };
 
   return (
@@ -104,11 +102,11 @@ function Login() {
           </div>
           <form onSubmit={submit} className="space-y-4">
             <Field label="Email" error={errors.email}>
-              <Input type="email" placeholder="you@shop.pk" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+              <Input type="email" placeholder="you@shop.pk" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" disabled={busy} />
             </Field>
             <Field label="Password" error={errors.password}>
               <div className="relative">
-                <Input type={showPw ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" className="pr-10" />
+                <Input type={showPw ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" className="pr-10" disabled={busy} />
                 <button type="button" onClick={() => setShowPw((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label={showPw ? "Hide password" : "Show password"}>
                   {showPw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
@@ -117,12 +115,13 @@ function Login() {
             {errors.form && <p className="text-sm text-destructive">{errors.form}</p>}
             <div className="flex items-center justify-between text-sm">
               <label className="flex items-center gap-2 text-muted-foreground">
-                <Checkbox checked={remember} onCheckedChange={(v) => setRemember(!!v)} />
+                <Checkbox checked={remember} onCheckedChange={(v) => setRemember(!!v)} disabled={busy} />
                 Remember me
               </label>
             </div>
-            <Button type="submit" className="w-full">Sign in</Button>
-            
+            <Button type="submit" className="w-full" disabled={busy}>
+              {busy ? "Signing in…" : "Sign in"}
+            </Button>
           </form>
         </Card>
       </div>

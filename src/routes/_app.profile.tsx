@@ -41,43 +41,60 @@ function ProfilePage() {
     reader.readAsDataURL(file);
   };
 
-  const saveProfile = () => {
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [changingPw, setChangingPw] = useState(false);
+
+  const saveProfile = async () => {
     const errs: Partial<Record<"name" | "email" | "phone", string>> = {};
     if (!name.trim()) errs.name = "Name is required.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = "Enter a valid email address.";
     if (!phone.trim()) errs.phone = "Phone number is required.";
     setErrors(errs);
     if (Object.keys(errs).length) return;
-    actions.saveUser({
-      id: user.id,
-      name: name.trim(),
-      email: email.trim(),
-      phone: phone.trim(),
-      role: user.role,
-      status: user.status,
-    });
-    toast.success("Profile updated successfully.");
+    setSavingProfile(true);
+    try {
+      const result = await actions.saveUser({
+        id: user.id,
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        role: user.role,
+        status: user.status,
+      });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Profile updated successfully.");
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
-  const changePassword = () => {
+  const changePassword = async () => {
     const errs: Partial<Record<"current" | "pwd" | "confirm", string>> = {};
     if (!current) errs.current = "Enter your current password.";
     if (pwd.length < 6) errs.pwd = "Password must be at least 6 characters.";
     if (pwd !== confirm) errs.confirm = "Passwords do not match.";
     setPwdErrors(errs);
     if (Object.keys(errs).length) return;
-    const result = actions.changePassword(user.id, current, pwd);
-    if (!result.ok) {
-      setPwdErrors({ current: result.error });
-      toast.error(result.error);
-      return;
+    setChangingPw(true);
+    try {
+      const result = await actions.changePassword(user.id, current, pwd);
+      if (!result.ok) {
+        setPwdErrors({ current: result.error });
+        toast.error(result.error);
+        return;
+      }
+      setCurrent(""); setPwd(""); setConfirm("");
+      toast.success("Password changed successfully.");
+    } finally {
+      setChangingPw(false);
     }
-    setCurrent(""); setPwd(""); setConfirm("");
-    toast.success("Password changed successfully.");
   };
 
-  const logout = () => {
-    actions.logout();
+  const logout = async () => {
+    await actions.logout();
     toast.success("Logged out successfully.");
     navigate({ to: "/login" });
   };
@@ -130,8 +147,12 @@ function ProfilePage() {
             </div>
 
             <div className="flex flex-wrap justify-end gap-2">
-              <Button variant="outline" onClick={changePassword}>Update Password</Button>
-              <Button onClick={saveProfile}>Save Changes</Button>
+              <Button variant="outline" onClick={changePassword} disabled={changingPw || savingProfile}>
+                {changingPw ? "Updating…" : "Update Password"}
+              </Button>
+              <Button onClick={saveProfile} disabled={savingProfile || changingPw}>
+                {savingProfile ? "Saving…" : "Save Changes"}
+              </Button>
             </div>
           </CardContent>
         </Card>

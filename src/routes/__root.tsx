@@ -12,6 +12,7 @@ import { Toaster } from "sonner";
 
 import { registerServiceWorker } from "@/lib/register-sw";
 import { APP_NAME } from "@/lib/branding";
+import { hydrateAuthSession, useAuthReady } from "@/lib/store";
 import appCss from "../styles.css?url";
 
 function NotFoundComponent() {
@@ -126,15 +127,25 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const authReady = useAuthReady();
 
   useEffect(() => {
     registerServiceWorker();
   }, []);
 
+  useEffect(() => {
+    void hydrateAuthSession();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      {authReady ? (
+        <Outlet />
+      ) : (
+        <div className="flex min-h-svh items-center justify-center bg-background text-sm text-muted-foreground">
+          Checking session…
+        </div>
+      )}
       <Toaster richColors position="top-right" />
     </QueryClientProvider>
   );

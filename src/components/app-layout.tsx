@@ -310,8 +310,8 @@ export function AppLayout() {
     return () => window.removeEventListener("keydown", h);
   }, []);
   const c = crumbs(pathname);
-  const logout = () => {
-    actions.logout();
+  const logout = async () => {
+    await actions.logout();
     navigate({ to: "/login" });
   };
   return (

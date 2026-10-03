@@ -99,7 +99,9 @@ function UsersPage() {
     return e;
   };
 
-  const save = () => {
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
     if (!dialog) return;
     const e = validate(dialog.data, dialog.mode);
     setErrors(e);
@@ -115,13 +117,24 @@ function UsersPage() {
         ? { password: dialog.data.password }
         : {}),
     };
-    actions.saveUser(payload as Parameters<typeof actions.saveUser>[0]);
-    toast.success(
-      dialog.mode === "add"
-        ? `User added. They can sign in with ${dialog.data.email.trim()}.`
-        : "User updated.",
-    );
-    setDialog(null);
+    setSaving(true);
+    try {
+      // New users are created in Neon Auth via admin.createUser (requires Make admin in Console).
+      const result = await actions.saveUser(payload as Parameters<typeof actions.saveUser>[0]);
+      if (!result.ok) {
+        toast.error(result.error);
+        setErrors({ email: result.error });
+        return;
+      }
+      toast.success(
+        dialog.mode === "add"
+          ? `User added. They can sign in with ${dialog.data.email.trim()}.`
+          : "User updated.",
+      );
+      setDialog(null);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const togglePerm = (module: PermModule, action: PermAction) => {
@@ -359,7 +372,9 @@ function UsersPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button>
-            <Button onClick={save}>Save</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

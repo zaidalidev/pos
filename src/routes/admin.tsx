@@ -4,6 +4,9 @@ import { getSessionUser, isPlatformAdmin } from "@/lib/store";
 
 export const Route = createFileRoute("/admin")({
   ssr: false,
+  head: () => ({
+    meta: [{ name: "robots", content: "noindex, nofollow" }],
+  }),
   beforeLoad: () => {
     const user = getSessionUser();
     if (!user || user.status !== "Active" || !isPlatformAdmin(user)) {

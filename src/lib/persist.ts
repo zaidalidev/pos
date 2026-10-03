@@ -1,5 +1,5 @@
 /**
- * Lean local persistence for ShopFlow.
+ * Lean local persistence for shoponclick.
  * - Splits session / meta / per-shop bags so one write does not rewrite everything
  * - Debounces disk writes during rapid POS updates
  * - Caps ephemeral collections so localStorage (and future Neon sync) stays small

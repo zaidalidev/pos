@@ -12,6 +12,18 @@ import { Toaster } from "sonner";
 
 import { registerServiceWorker } from "@/lib/register-sw";
 import { APP_NAME } from "@/lib/branding";
+import {
+  SITE_DESCRIPTION,
+  SITE_KEYWORDS,
+  SITE_TAGLINE,
+  SITE_URL,
+  absoluteUrl,
+  jsonLdScript,
+  organizationJsonLd,
+  softwareApplicationJsonLd,
+  webSiteJsonLd,
+  OG_IMAGE,
+} from "@/lib/seo";
 import { hydrateAuthSession, useAuthReady } from "@/lib/store";
 import appCss from "../styles.css?url";
 
@@ -81,28 +93,50 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" },
-      { title: `${APP_NAME} — Simple POS & Inventory Management for Your Shop` },
-      { name: "description", content: "Simple POS & Inventory Management for accessories shops in Pakistan." },
+      { title: `${APP_NAME} — ${SITE_TAGLINE}` },
+      { name: "description", content: SITE_DESCRIPTION },
+      { name: "keywords", content: SITE_KEYWORDS },
+      { name: "robots", content: "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" },
+      { name: "author", content: APP_NAME },
+      { name: "creator", content: APP_NAME },
+      { name: "publisher", content: APP_NAME },
+      { name: "geo.region", content: "PK" },
       { name: "theme-color", content: "#059669" },
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "default" },
       { name: "apple-mobile-web-app-title", content: APP_NAME },
       { name: "application-name", content: APP_NAME },
-      { property: "og:title", content: APP_NAME },
-      { property: "og:description", content: "Simple POS & Inventory Management for Your Shop" },
+      { name: "format-detection", content: "telephone=no" },
+      { property: "og:site_name", content: APP_NAME },
+      { property: "og:locale", content: "en_PK" },
       { property: "og:type", content: "website" },
+      { property: "og:url", content: SITE_URL },
+      { property: "og:title", content: `${APP_NAME} — ${SITE_TAGLINE}` },
+      { property: "og:description", content: SITE_DESCRIPTION },
+      { property: "og:image", content: absoluteUrl(OG_IMAGE) },
+      { property: "og:image:width", content: "1200" },
+      { property: "og:image:height", content: "630" },
+      { property: "og:image:alt", content: `${APP_NAME} — ${SITE_TAGLINE}` },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: `${APP_NAME} — ${SITE_TAGLINE}` },
+      { name: "twitter:description", content: SITE_DESCRIPTION },
+      { name: "twitter:image", content: absoluteUrl(OG_IMAGE) },
+      { name: "twitter:image:alt", content: `${APP_NAME} — ${SITE_TAGLINE}` },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" },
       { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "icon", href: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
       { rel: "icon", href: "/favicon-16x16.png", type: "image/png", sizes: "16x16" },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon", sizes: "any" },
       { rel: "apple-touch-icon", href: "/apple-touch-icon.png", sizes: "180x180" },
+    ],
+    scripts: [
+      jsonLdScript(organizationJsonLd(), webSiteJsonLd(), softwareApplicationJsonLd()),
     ],
   }),
   shellComponent: RootShell,
@@ -113,7 +147,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en-PK">
       <head>
         <HeadContent />
       </head>

@@ -7,14 +7,18 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field } from "@/components/shared";
-import { pageHead } from "@/lib/format";
 import { AppLogo } from "@/components/app-logo";
 import { APP_NAME } from "@/lib/branding";
+import { publicPageHead } from "@/lib/seo";
 import { actions, getSessionUser, sessionHome } from "@/lib/store";
 import { isNeonConfigured } from "@/lib/neon";
 
 export const Route = createFileRoute("/login")({
-  head: pageHead("Sign in", `Sign in to your ${APP_NAME} account.`),
+  head: publicPageHead(
+    "Sign in",
+    `Sign in to your ${APP_NAME} account. POS, inventory, sales and accounts for accessories shops in Pakistan.`,
+    "/login",
+  ),
   beforeLoad: () => {
     const user = getSessionUser();
     if (user && user.status === "Active") {

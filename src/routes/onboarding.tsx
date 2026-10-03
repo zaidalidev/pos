@@ -1,10 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Card } from "@/components/ui/card";
 import { EmptyState, PageHeader } from "@/components/shared";
-import { pageHead } from "@/lib/format";
+import { privatePageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/onboarding")({
-  head: pageHead("Onboarding", "Set up your shop in Dukan on Click."),
+  head: privatePageHead("Onboarding", "Set up your shop in shoponclick."),
   component: () => (
     <div>
       <PageHeader title="onboarding" />

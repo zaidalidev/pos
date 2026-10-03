@@ -1,16 +1,14 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { getSessionUser, sessionHome } from "@/lib/store";
 import { APP_NAME } from "@/lib/branding";
+import { publicPageHead, SITE_DESCRIPTION, SITE_TAGLINE } from "@/lib/seo";
 
 export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: `${APP_NAME} — Simple POS & Inventory Management for Your Shop` },
-      { name: "description", content: "POS, inventory, sales and accounts for accessories shops in Pakistan." },
-      { property: "og:title", content: `${APP_NAME} — Simple POS & Inventory Management` },
-      { property: "og:description", content: "POS, inventory, sales and accounts for accessories shops in Pakistan." },
-    ],
-  }),
+  head: publicPageHead(
+    `${APP_NAME} — ${SITE_TAGLINE}`,
+    SITE_DESCRIPTION,
+    "/",
+  ),
   beforeLoad: () => {
     const user = getSessionUser();
     if (user && user.status === "Active") {

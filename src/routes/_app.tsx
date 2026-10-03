@@ -4,6 +4,9 @@ import { getSessionUser, getState, isPlatformAdmin, sessionCanAccess, sessionHom
 
 export const Route = createFileRoute("/_app")({
   ssr: false,
+  head: () => ({
+    meta: [{ name: "robots", content: "noindex, nofollow" }],
+  }),
   beforeLoad: ({ location }) => {
     const s = getState();
     const user = getSessionUser();

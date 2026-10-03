@@ -1,14 +1,38 @@
+# shoponclick — https://shoponclick.com
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /signup
+Disallow: /dashboard
+Disallow: /pos
+Disallow: /sales
+Disallow: /purchases
+Disallow: /products
+Disallow: /inventory
+Disallow: /customers
+Disallow: /suppliers
+Disallow: /expenses
+Disallow: /accounts
+Disallow: /staff
+Disallow: /reports
+Disallow: /settings
+Disallow: /users
+Disallow: /profile
+Disallow: /notifications
+Disallow: /categories
+Disallow: /sale-returns
+Disallow: /purchase-returns
+Disallow: /onboarding
+Disallow: /admin
+
 User-agent: Googlebot
 Allow: /
+Allow: /login
+Allow: /signup
 
 User-agent: Bingbot
 Allow: /
+Allow: /login
+Allow: /signup
 
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
-User-agent: *
-Allow: /
+Sitemap: https://shoponclick.com/sitemap.xml

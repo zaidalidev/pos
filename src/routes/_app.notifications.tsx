@@ -4,7 +4,7 @@ import { EmptyState, PageHeader } from "@/components/shared";
 import { pageHead } from "@/lib/format";
 
 export const Route = createFileRoute("/_app/notifications")({
-  head: pageHead("Notifications", "Notifications in Dukan on Click."),
+  head: pageHead("Notifications", "Notifications in shoponclick."),
   component: () => (
     <div>
       <PageHeader title="Notifications" />

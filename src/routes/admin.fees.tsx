@@ -210,7 +210,7 @@ function AdminFees() {
     exportTablePdf({
       filename: `${detailShop.name.replace(/\s+/g, "-").toLowerCase()}-${r.month}-fee.pdf`,
       title: "Monthly fee receipt",
-      shopName: "Dukan on Click Admin",
+      shopName: "shoponclick Admin",
       subtitle: `${detailShop.name}${detailOwner ? ` · Owner: ${detailOwner.name}` : ""}`,
       columns: [
         { key: "label", header: "Detail", width: 50 },
@@ -241,7 +241,7 @@ function AdminFees() {
     exportTablePdf({
       filename: `${detailShop.name.replace(/\s+/g, "-").toLowerCase()}-fees.pdf`,
       title: "Shop fee statement",
-      shopName: "Dukan on Click Admin",
+      shopName: "shoponclick Admin",
       subtitle: `${detailShop.name}${detailOwner ? ` · Owner: ${detailOwner.name}` : ""}`,
       columns: [
         { key: "month", header: "Month", width: 35 },

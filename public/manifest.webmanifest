@@ -1,7 +1,7 @@
 {
-  "name": "Dukan on Click",
-  "short_name": "Dukan on Click",
-  "description": "Simple POS & Inventory Management for accessories shops in Pakistan.",
+  "name": "shoponclick",
+  "short_name": "shoponclick",
+  "description": "shoponclick — simple POS and inventory management for accessories shops in Pakistan. Sell faster, track stock, and manage accounts.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

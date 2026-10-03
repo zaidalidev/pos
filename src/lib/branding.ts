@@ -1,11 +1,11 @@
 /** App-wide product name and default logo (Settings upload overrides per shop). */
-export const APP_NAME = "Dukan on Click";
-export const APP_NAME_SHORT = "Dukan on Click";
+export const APP_NAME = "shoponclick";
+export const APP_NAME_SHORT = "shoponclick";
 /** White mark — use on dark / primary backgrounds */
-export const DEFAULT_LOGO = "/dukanonclick.png?v=6";
+export const DEFAULT_LOGO = "/dukanonclick.png?v=7";
 /** Dark mark — use on light backgrounds */
-export const DEFAULT_LOGO_DARK = "/dukanonclick-logo-dark.png?v=6";
-export const DEFAULT_FAVICON = "/favicon-32x32.png?v=6";
+export const DEFAULT_LOGO_DARK = "/dukanonclick-logo-dark.png?v=7";
+export const DEFAULT_FAVICON = "/favicon-32x32.png?v=7";
 
 export type LogoTone = "light" | "dark";
 

@@ -7,13 +7,17 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field } from "@/components/shared";
-import { pageHead } from "@/lib/format";
 import { AppLogo } from "@/components/app-logo";
 import { APP_NAME } from "@/lib/branding";
+import { publicPageHead } from "@/lib/seo";
 import { actions } from "@/lib/store";
 
 export const Route = createFileRoute("/signup")({
-  head: pageHead("Create account", `Create your ${APP_NAME} account.`),
+  head: publicPageHead(
+    "Create account",
+    `Create your free ${APP_NAME} account. Start managing POS, inventory, sales and accounts for your accessories shop in Pakistan.`,
+    "/signup",
+  ),
   component: Signup,
 });
 

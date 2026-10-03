@@ -160,7 +160,7 @@ function ShopSettingsPage() {
               <p className="text-xs text-muted-foreground">
                 {shop.logo
                   ? "Custom logo — used in sidebar, browser tab, and invoices."
-                  : "Default Dukan on Click logo — upload to replace."}
+                  : "Default shoponclick logo — upload to replace."}
               </p>
               <label className="w-full">
                 <Input type="file" accept="image/*" className="hidden" onChange={onLogo} />

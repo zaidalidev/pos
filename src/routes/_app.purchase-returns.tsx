@@ -8,10 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable, EmptyState, Field, FilterBar, PageHeader, SearchableSelect, SimpleSelect, StatCard, StatusBadge, type Column } from "@/components/shared";
-import { actions, getState, useDB } from "@/lib/store";
+import { actions, getState, purchaseReturnRefund, useDB } from "@/lib/store";
 import { fmtDate, pageHead, rs, supplierName } from "@/lib/format";
 import { exportTablePdf } from "@/lib/pdf";
-import type { Purchase, PurchaseReturn } from "@/lib/mock-data";
+import { accountIdOf, type Purchase, type PurchaseReturn } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/_app/purchase-returns")({
   validateSearch: z.object({ purchase: z.string().optional() }),
@@ -49,8 +49,10 @@ function PurchaseReturns() {
   const [reason, setReason] = useState(REASONS[0]!);
   const [customReasons, setCustomReasons] = useState<string[]>([]);
   const [mode, setMode] = useState<(typeof MODES)[number]>("Paid");
+  const [accountId, setAccountId] = useState(accountIdOf("Cash"));
   const reasonOptions = [...REASONS, ...customReasons.filter((r) => !REASONS.includes(r))];
   const purchase = db.purchases.find((p) => p.id === purchaseId);
+  const cashAccounts = db.accounts.filter((a) => a.active && a.type !== "Credit");
   const purchaseReturnsForOpen = purchase
     ? db.purchaseReturns.filter((r) => r.purchaseId === purchase.id)
     : [];
@@ -74,6 +76,8 @@ function PurchaseReturns() {
     setQ(p.no);
     setPurchaseId(p.id);
     setQty({});
+    const lastPay = [...p.payments].reverse().find((pay) => pay.accountId && db.accounts.some((a) => a.id === pay.accountId && a.type !== "Credit"));
+    setAccountId(lastPay?.accountId ?? cashAccounts[0]?.id ?? accountIdOf("Cash"));
     toast.success(`Loaded ${p.no} · ${p.items.length} item${p.items.length === 1 ? "" : "s"} · ${rs(p.total)}`);
   };
 
@@ -89,6 +93,7 @@ function PurchaseReturns() {
       .reduce((a, b) => a + b.qty, 0);
 
   const amount = purchase ? purchase.items.reduce((a, i) => a + (qty[i.productId] ?? 0) * i.price, 0) : 0;
+  const maxCashBack = purchase && mode === "Paid" ? Math.min(amount, Math.max(0, purchase.paid)) : 0;
 
   const submit = () => {
     if (!purchase) return;
@@ -101,10 +106,13 @@ function PurchaseReturns() {
         return toast.error(`Not enough stock to return ${it.name}. Only ${product?.stock ?? 0} available.`);
       }
     }
-    actions.addPurchaseReturn({ purchaseId: purchase.id, items, reason, mode });
+    const cashBack = mode === "Paid" ? Math.min(amount, Math.max(0, purchase.paid)) : 0;
+    actions.addPurchaseReturn({ purchaseId: purchase.id, items, reason, mode, accountId: mode === "Paid" ? accountId : undefined });
     toast.success(
       mode === "Paid"
-        ? `Return saved. ${rs(amount)} paid/refunded by supplier. Stock updated.`
+        ? cashBack > 0
+          ? `Return saved. ${rs(cashBack)} refunded to account. Stock updated.`
+          : `Return saved. No account refund (purchase was unpaid). Stock updated.`
         : `Return saved. ${rs(amount)} unpaid — adjusted on supplier balance. Stock updated.`,
     );
     setPurchaseId(null);
@@ -145,7 +153,24 @@ function PurchaseReturns() {
     },
     { key: "reason", header: "Reason", cell: (r) => r.reason },
     { key: "mode", header: "Amount", cell: (r) => <StatusBadge status={r.mode} /> },
-    { key: "amt", header: "Total", cell: (r) => <b>{rs(r.amount)}</b>, className: "text-right" },
+    {
+      key: "amt",
+      header: "Total",
+      cell: (r) => {
+        const refund = purchaseReturnRefund(r);
+        return (
+          <div className="text-right">
+            <b>{rs(r.amount)}</b>
+            {r.mode === "Paid" && (
+              <p className="text-xs font-normal text-muted-foreground">
+                {refund > 0 ? `Account +${rs(refund)}` : "No account credit"}
+              </p>
+            )}
+          </div>
+        );
+      },
+      className: "text-right",
+    },
   ];
 
   return (
@@ -295,10 +320,28 @@ function PurchaseReturns() {
             <Field label="Amount">
               <div className="flex h-9 items-center rounded-md border bg-muted px-3 font-semibold">{rs(amount)}</div>
             </Field>
+            {mode === "Paid" && (
+              <Field
+                label="Refund account"
+                hint={
+                  purchase
+                    ? maxCashBack > 0
+                      ? `${rs(maxCashBack)} will be credited (limited to amount paid on this purchase).`
+                      : "Purchase has no paid amount — account balance will not change."
+                    : undefined
+                }
+              >
+                <SimpleSelect
+                  value={accountId}
+                  onChange={setAccountId}
+                  options={cashAccounts.map((a) => ({ value: a.id, label: a.name }))}
+                />
+              </Field>
+            )}
             <p className="text-xs text-muted-foreground">
               {mode === "Paid"
-                ? "Supplier has paid/refunded you — purchase paid amount is reduced."
-                : "Amount is unpaid — credited against supplier dues / balance."}
+                ? "Supplier refunded you — money is credited to the refund account and purchase paid is reduced."
+                : "Amount is unpaid — credited against supplier dues / balance. No account credit."}
             </p>
             <Button className="w-full" disabled={!purchase} onClick={submit}>
               <Undo2 className="size-4" />

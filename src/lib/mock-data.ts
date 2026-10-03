@@ -153,7 +153,14 @@ export type StaffTxn = {
 export type AdjustType = "Add" | "Remove" | "Damage" | "Lost" | "Correction";
 export type Adjustment = { id: string; date: string; productId: string; type: AdjustType; qty: number; before: number; after: number; reason: string; notes: string; by: string };
 export type SaleReturn = { id: string; no: string; date: string; saleId: string; invoiceNo: string; items: LineItem[]; reason: string; refund: number; method: string; accountId: string };
-export type PurchaseReturn = { id: string; no: string; date: string; purchaseId: string; purchaseNo: string; supplierId: string; items: LineItem[]; reason: string; amount: number; mode: "Paid" | "Unpaid" };
+export type PurchaseReturn = {
+  id: string; no: string; date: string; purchaseId: string; purchaseNo: string; supplierId: string;
+  items: LineItem[]; reason: string; amount: number; mode: "Paid" | "Unpaid";
+  /** Cash/bank credited when supplier refunds (Paid mode). 0 for Unpaid / never-paid purchases. */
+  refund?: number;
+  accountId?: string;
+  method?: string;
+};
 export type AppNotification = { id: string; title: string; description: string; time: string; read: boolean; kind: "stock" | "payment" | "sales" | "system" };
 export type HeldSale = { id: string; date: string; customerId: string | null; items: { productId: string; qty: number }[]; discount: number };
 export type BrandTheme = "emerald" | "blue" | "rose";

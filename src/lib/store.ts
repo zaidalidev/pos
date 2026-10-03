@@ -781,6 +781,21 @@ function creditAccountId(s: State) {
   return s.accounts.find((a) => a.type === "Credit" && a.active)?.id ?? M.accountIdOf("Credit");
 }
 
+/** Cash credited for a purchase return (Paid). Legacy rows without `refund` use full amount. */
+export function purchaseReturnRefund(r: Pick<M.PurchaseReturn, "mode" | "amount" | "refund">) {
+  if (typeof r.refund === "number") return Math.max(0, r.refund);
+  return r.mode === "Paid" ? Math.max(0, r.amount) : 0;
+}
+
+/** Prefer the account that paid the purchase; fall back to Cash. */
+function purchaseRefundAccountId(s: State, pur: M.Purchase) {
+  for (let i = pur.payments.length - 1; i >= 0; i--) {
+    const p = pur.payments[i]!;
+    if (p.accountId && !isCreditAccount(s, p.accountId)) return p.accountId;
+  }
+  return cashAccountId(s);
+}
+
 export type AccountLedgerEntry = {
   id: string;
   date: string;
@@ -835,6 +850,16 @@ export function accountStats(s: State, accountId: string) {
   for (const r of s.saleReturns) {
     if (r.accountId !== accountId || r.refund <= 0) continue;
     ledger.push({ id: r.id, date: r.date, kind: "Sale refund", reference: r.no, note: r.reason, inflow: 0, outflow: r.refund });
+  }
+  for (const r of s.purchaseReturns) {
+    const refund = purchaseReturnRefund(r);
+    if (refund <= 0) continue;
+    const refundAcc = r.accountId || cashAccountId(s);
+    if (refundAcc !== accountId) continue;
+    ledger.push({
+      id: r.id, date: r.date, kind: "Purchase refund", reference: r.no, note: r.reason,
+      inflow: refund, outflow: 0,
+    });
   }
   for (const log of s.accountBalanceLogs) {
     if (log.accountId !== accountId) continue;
@@ -1714,7 +1739,13 @@ export const actions = {
     }));
     return true;
   },
-  addPurchaseReturn(input: { purchaseId: string; items: M.LineItem[]; reason: string; mode: "Paid" | "Unpaid" }) {
+  addPurchaseReturn(input: {
+    purchaseId: string;
+    items: M.LineItem[];
+    reason: string;
+    mode: "Paid" | "Unpaid";
+    accountId?: string;
+  }) {
     const s = getState();
     const pur = s.purchases.find((x) => x.id === input.purchaseId);
     if (!pur || pur.status === "Returned") return;
@@ -1722,8 +1753,27 @@ export const actions = {
     const retQty = [...s.purchaseReturns.filter((r) => r.purchaseId === pur.id).flatMap((r) => r.items), ...input.items].reduce((a, b) => a + b.qty, 0);
     const amount = sumItems(input.items);
     const fullyReturned = retQty >= purchasedQty;
+    // Only money actually paid on this purchase can come back into an account.
+    const refund = input.mode === "Paid" ? Math.min(amount, Math.max(0, pur.paid)) : 0;
+    const refundAccId = refund > 0
+      ? (input.accountId && !isCreditAccount(s, input.accountId) ? input.accountId : purchaseRefundAccountId(s, pur))
+      : undefined;
+    const meta = refundAccId ? payMeta(s, refundAccId) : {};
     setState(() => ({
-      purchaseReturns: [{ ...input, amount, id: uid("pr"), no: `PRT-${21 + s.purchaseReturns.length}`, date: now(), purchaseNo: pur.no, supplierId: pur.supplierId }, ...s.purchaseReturns],
+      purchaseReturns: [{
+        purchaseId: input.purchaseId,
+        items: input.items,
+        reason: input.reason,
+        mode: input.mode,
+        amount,
+        refund,
+        ...meta,
+        id: uid("pr"),
+        no: `PRT-${21 + s.purchaseReturns.length}`,
+        date: now(),
+        purchaseNo: pur.no,
+        supplierId: pur.supplierId,
+      }, ...s.purchaseReturns],
       purchases: s.purchases.map((x) => {
         if (x.id !== pur.id) return x;
         if (fullyReturned) return { ...x, total: 0, paid: 0, status: "Returned" as const };

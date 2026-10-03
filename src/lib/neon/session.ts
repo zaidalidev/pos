@@ -51,6 +51,29 @@ export async function getNeonSession(): Promise<NeonSession | null> {
   }
 }
 
+function userFromAuthPayload(data: unknown): NeonAuthUser | null {
+  if (!data || typeof data !== "object") return null;
+  const user = (data as { user?: { id?: string; email?: string; name?: string } }).user;
+  if (!user?.id || !user.email) return null;
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name || user.email.split("@")[0] || "User",
+  };
+}
+
+/** getSession can lag behind Set-Cookie on mobile / PWA; retry briefly. */
+async function getNeonSessionWithRetry(attempts = 3, delayMs = 150): Promise<NeonSession | null> {
+  for (let i = 0; i < attempts; i++) {
+    const session = await getNeonSession();
+    if (session) return session;
+    if (i < attempts - 1) {
+      await new Promise((r) => setTimeout(r, delayMs * (i + 1)));
+    }
+  }
+  return null;
+}
+
 export async function neonSignIn(
   email: string,
   password: string,
@@ -69,7 +92,11 @@ export async function neonSignIn(
     return { ok: false, error: mapError(result.error, "Sign in failed.") };
   }
 
-  const session = await getNeonSession();
+  // Prefer user from sign-in response (available immediately; avoids PWA cookie race).
+  const fromSignIn = userFromAuthPayload(result.data);
+  if (fromSignIn) return { ok: true, data: fromSignIn };
+
+  const session = await getNeonSessionWithRetry();
   if (!session) {
     return { ok: false, error: "Signed in but session could not be loaded." };
   }
@@ -94,7 +121,10 @@ export async function neonSignUp(input: {
     return { ok: false, error: mapError(result.error, "Sign up failed.") };
   }
 
-  const session = await getNeonSession();
+  const fromSignUp = userFromAuthPayload(result.data);
+  if (fromSignUp) return { ok: true, data: fromSignUp };
+
+  const session = await getNeonSessionWithRetry();
   if (!session) {
     // Some projects require email verification before a session exists.
     return {

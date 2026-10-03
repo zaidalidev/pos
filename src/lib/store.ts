@@ -683,6 +683,82 @@ export function saleReturnedStats(sale: M.Sale, returns: M.SaleReturn[]) {
     amount: saleReturnValue(sale, items),
   };
 }
+
+/** Qty of a product still not returned on sales (sold − returned). */
+export function productOpenSaleDocs(
+  productId: string,
+  sales: M.Sale[],
+  saleReturns: M.SaleReturn[],
+): { docs: number; qty: number } {
+  let docs = 0;
+  let qty = 0;
+  for (const sale of sales) {
+    const sold = sale.items.filter((i) => i.productId === productId).reduce((a, i) => a + i.qty, 0);
+    if (sold <= 0) continue;
+    const returned = saleReturns
+      .filter((r) => r.saleId === sale.id)
+      .flatMap((r) => r.items)
+      .filter((i) => i.productId === productId)
+      .reduce((a, i) => a + i.qty, 0);
+    const pending = sold - returned;
+    if (pending > 0) {
+      docs += 1;
+      qty += pending;
+    }
+  }
+  return { docs, qty };
+}
+
+/** Qty of a product still not returned on purchases (bought − returned). */
+export function productOpenPurchaseDocs(
+  productId: string,
+  purchases: M.Purchase[],
+  purchaseReturns: M.PurchaseReturn[],
+): { docs: number; qty: number } {
+  let docs = 0;
+  let qty = 0;
+  for (const pur of purchases) {
+    const bought = pur.items.filter((i) => i.productId === productId).reduce((a, i) => a + i.qty, 0);
+    if (bought <= 0) continue;
+    const returned = purchaseReturns
+      .filter((r) => r.purchaseId === pur.id)
+      .flatMap((r) => r.items)
+      .filter((i) => i.productId === productId)
+      .reduce((a, i) => a + i.qty, 0);
+    const pending = bought - returned;
+    if (pending > 0) {
+      docs += 1;
+      qty += pending;
+    }
+  }
+  return { docs, qty };
+}
+
+/**
+ * Why a product cannot be deleted, or null if delete is allowed.
+ * Requires every sale/purchase line for this product to be fully returned first.
+ */
+export function productDeleteBlockReason(
+  s: Pick<State, "sales" | "purchases" | "saleReturns" | "purchaseReturns" | "held">,
+  productId: string,
+): string | null {
+  const sales = productOpenSaleDocs(productId, s.sales, s.saleReturns);
+  const purchases = productOpenPurchaseDocs(productId, s.purchases, s.purchaseReturns);
+  const held = s.held.filter((h) => h.items.some((i) => i.productId === productId)).length;
+  const parts: string[] = [];
+  if (sales.docs > 0) {
+    parts.push(`${sales.docs} sale${sales.docs === 1 ? "" : "s"} (${sales.qty} pcs) not fully returned`);
+  }
+  if (purchases.docs > 0) {
+    parts.push(`${purchases.docs} purchase${purchases.docs === 1 ? "" : "s"} (${purchases.qty} pcs) not fully returned`);
+  }
+  if (held > 0) {
+    parts.push(`${held} held sale${held === 1 ? "" : "s"} still use it`);
+  }
+  if (parts.length === 0) return null;
+  return `Return all sales/purchases for this product first: ${parts.join("; ")}.`;
+}
+
 export const stockStatus = (p: M.Product) => (p.stock <= 0 ? "Out of Stock" : p.stock <= p.minStock ? "Low Stock" : "In Stock");
 
 export function findAccount(s: State, accountId: string) {
@@ -981,8 +1057,12 @@ export const actions = {
   updateProduct(id: string, patch: Partial<M.Product>) {
     setState((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, ...patch } : p)) }));
   },
-  deleteProduct(id: string) {
-    setState((s) => ({ products: s.products.filter((p) => p.id !== id) }));
+  deleteProduct(id: string): "ok" | "not_found" | "blocked" {
+    const s = getState();
+    if (!s.products.some((p) => p.id === id)) return "not_found";
+    if (productDeleteBlockReason(s, id)) return "blocked";
+    setState((st) => ({ products: st.products.filter((p) => p.id !== id) }));
+    return "ok";
   },
   saveCategory(c: Omit<M.Category, "id"> & { id?: string }) {
     setState((s) => ({

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog, DataTable, EmptyState, FilterBar, PageHeader, ProductThumb, SearchInput, SearchableSelect, StatCard, StatusBadge, useFakeLoading, type Column } from "@/components/shared";
-import { actions, stockStatus, useDB } from "@/lib/store";
+import { actions, productDeleteBlockReason, stockStatus, useDB } from "@/lib/store";
 import { pageHead, rs, supplierName } from "@/lib/format";
 import { exportTablePdf } from "@/lib/pdf";
 import { categoryLabel, matchesCategory, parentCategories, type Product } from "@/lib/mock-data";
@@ -78,7 +78,19 @@ function ProductsPage() {
             <DropdownMenuItem onClick={() => navigate({ to: "/products/$id", params: { id: p.id } })}><Eye className="size-4" />View details</DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate({ to: "/products/$id/edit", params: { id: p.id } })}><Pencil className="size-4" />Edit product</DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate({ to: "/inventory/adjustments", search: { product: p.id } })}><SlidersHorizontal className="size-4" />Adjust stock</DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => setDel(p)}><Trash2 className="size-4" />Delete</DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => {
+                const reason = productDeleteBlockReason(db, p.id);
+                if (reason) {
+                  toast.error(reason);
+                  return;
+                }
+                setDel(p);
+              }}
+            >
+              <Trash2 className="size-4" />Delete
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -174,8 +186,15 @@ function ProductsPage() {
         open={!!del}
         onOpenChange={(o) => !o && setDel(null)}
         title={`Delete ${del?.name}?`}
-        description="This removes the product from your catalogue. Past invoices stay unchanged."
-        onConfirm={() => { if (del) { actions.deleteProduct(del.id); toast.success(`${del.name} deleted.`); } setDel(null); }}
+        description="All sales and purchases for this product are fully returned. Remove it from your catalogue?"
+        onConfirm={() => {
+          if (!del) return;
+          const result = actions.deleteProduct(del.id);
+          if (result === "ok") toast.success(`${del.name} deleted.`);
+          else if (result === "blocked") toast.error(productDeleteBlockReason(db, del.id) ?? "Cannot delete this product yet.");
+          else toast.error("Product not found.");
+          setDel(null);
+        }}
       />
     </div>
   );

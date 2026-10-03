@@ -1,25 +1,22 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowLeft,
   Banknote,
   Boxes,
   Package,
-  PackagePlus,
   Pencil,
   ShoppingBag,
+  SlidersHorizontal,
   Trash2,
   TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ConfirmDialog, DataTable, EmptyState, Field, PageHeader, ProductThumb, StatCard, StatusBadge, type Column } from "@/components/shared";
-import { actions, stockStatus, useDB } from "@/lib/store";
+import { ConfirmDialog, DataTable, EmptyState, PageHeader, ProductThumb, StatCard, StatusBadge, type Column } from "@/components/shared";
+import { actions, productDeleteBlockReason, stockStatus, useDB } from "@/lib/store";
 import { fmtDateTime, pageHead, rs, supplierName } from "@/lib/format";
 import { categoryLabel } from "@/lib/mock-data";
 
@@ -59,21 +56,7 @@ function ProductDetail() {
   const db = useDB();
   const navigate = useNavigate();
   const [del, setDel] = useState(false);
-  const [addStock, setAddStock] = useState(false);
-  const [qty, setQty] = useState(1);
-  const [reason, setReason] = useState("");
-  const [notes, setNotes] = useState("");
-  const [qtyErr, setQtyErr] = useState("");
   const product = db.products.find((p) => p.id === id);
-
-  useEffect(() => {
-    if (addStock) {
-      setQty(1);
-      setReason("");
-      setNotes("");
-      setQtyErr("");
-    }
-  }, [addStock]);
 
   const sales = useMemo(
     () =>
@@ -226,10 +209,22 @@ function ProductDetail() {
         back={<Button variant="outline" asChild><Link to="/products"><ArrowLeft className="size-4" />Back</Link></Button>}
         actions={
           <>
-            <Button onClick={() => setAddStock(true)}>
-              <PackagePlus className="size-4" />Add stock
+            <Button onClick={() => navigate({ to: "/inventory/adjustments", search: { product: product.id } })}>
+              <SlidersHorizontal className="size-4" />Adjust stock
             </Button>
-            <Button variant="outline" onClick={() => setDel(true)}><Trash2 className="size-4" />Delete</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const reason = productDeleteBlockReason(db, product.id);
+                if (reason) {
+                  toast.error(reason);
+                  return;
+                }
+                setDel(true);
+              }}
+            >
+              <Trash2 className="size-4" />Delete
+            </Button>
             <Button variant="outline" asChild><Link to="/products/$id/edit" params={{ id: product.id }}><Pencil className="size-4" />Edit</Link></Button>
           </>
         }
@@ -349,83 +344,24 @@ function ProductDetail() {
         </div>
       </div>
 
-      <Dialog open={addStock} onOpenChange={setAddStock}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Add stock</DialogTitle>
-            <DialogDescription>
-              {product.name} · currently <b>{product.stock}</b> in stock
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Field label="Quantity" error={qtyErr}>
-              <Input
-                type="number"
-                min={1}
-                inputMode="numeric"
-                autoFocus
-                className="bg-card"
-                value={qty || ""}
-                onChange={(e) => {
-                  setQty(Number(e.target.value) || 0);
-                  setQtyErr("");
-                }}
-              />
-            </Field>
-            <Field label="Reason" hint="Optional">
-              <Input
-                className="bg-card"
-                placeholder="e.g. Restock, Found inventory"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-              />
-            </Field>
-            <Field label="Notes" hint="Optional">
-              <Textarea
-                className="bg-card"
-                rows={2}
-                placeholder="Any extra detail…"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </Field>
-            {qty > 0 && (
-              <p className="text-sm text-muted-foreground">
-                New stock: <b className="text-foreground">{product.stock + qty}</b>
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddStock(false)}>Cancel</Button>
-            <Button
-              onClick={() => {
-                if (qty <= 0) return setQtyErr("Enter a quantity greater than zero.");
-                actions.addAdjustment({
-                  productId: product.id,
-                  type: "Add",
-                  qty,
-                  reason: reason.trim() || "Stock added",
-                  notes: notes.trim(),
-                });
-                toast.success(`Added ${qty} to ${product.name}. Stock is now ${product.stock + qty}.`);
-                setAddStock(false);
-              }}
-            >
-              <PackagePlus className="size-4" />Add stock
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <ConfirmDialog
         open={del}
         onOpenChange={setDel}
         title={`Delete ${product.name}?`}
-        description="This removes the product from your catalogue. Past invoices stay unchanged."
+        description="All sales and purchases for this product are fully returned. Remove it from your catalogue?"
         onConfirm={() => {
-          actions.deleteProduct(product.id);
-          toast.success(`${product.name} deleted.`);
-          navigate({ to: "/products" });
+          const result = actions.deleteProduct(product.id);
+          if (result === "ok") {
+            toast.success(`${product.name} deleted.`);
+            navigate({ to: "/products" });
+            return;
+          }
+          if (result === "blocked") {
+            toast.error(productDeleteBlockReason(db, product.id) ?? "Cannot delete this product yet.");
+          } else {
+            toast.error("Product not found.");
+          }
+          setDel(false);
         }}
       />
     </div>

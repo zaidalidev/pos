@@ -20,6 +20,8 @@
     "rolldown": "1.2.1"
   },
   "dependencies": {
+    "@bugsnag/js": "^9.0.0",
+    "@bugsnag/plugin-react": "^9.0.0",
     "@hookform/resolvers": "^5.2.2",
     "@neondatabase/neon-js": "^0.7.0-beta",
     "@radix-ui/react-accordion": "^1.2.12",

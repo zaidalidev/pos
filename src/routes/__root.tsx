@@ -7,7 +7,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type ErrorInfo, type ReactNode } from "react";
 import { Toaster } from "sonner";
 
 import { registerServiceWorker } from "@/lib/register-sw";
@@ -24,8 +24,11 @@ import {
   webSiteJsonLd,
   OG_IMAGE,
 } from "@/lib/seo";
+import { getBugsnagErrorBoundary } from "@/lib/bugsnag";
 import { hydrateAuthSession, useAuthReady } from "@/lib/store";
 import appCss from "../styles.css?url";
+
+import "@/lib/bugsnag";
 
 function NotFoundComponent() {
   return (
@@ -162,6 +165,7 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const authReady = useAuthReady();
+  const BugsnagBoundary = getBugsnagErrorBoundary();
 
   useEffect(() => {
     registerServiceWorker();
@@ -171,8 +175,8 @@ function RootComponent() {
     void hydrateAuthSession();
   }, []);
 
-  return (
-    <QueryClientProvider client={queryClient}>
+  const app = (
+    <>
       {authReady ? (
         <Outlet />
       ) : (
@@ -181,6 +185,62 @@ function RootComponent() {
         </div>
       )}
       <Toaster richColors position="top-right" />
+    </>
+  );
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      {BugsnagBoundary ? (
+        <BugsnagBoundary FallbackComponent={BugsnagErrorFallback}>{app}</BugsnagBoundary>
+      ) : (
+        app
+      )}
     </QueryClientProvider>
+  );
+}
+
+function BugsnagErrorFallback({
+  error,
+  clearError,
+}: {
+  error: Error;
+  info: ErrorInfo;
+  clearError: () => void;
+}) {
+  const router = useRouter();
+  const message = error?.message || "Unknown error";
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="max-w-md text-center">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          This page didn't load
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Something went wrong on our end. You can try refreshing or head back home.
+        </p>
+        <p className="mt-3 break-words rounded-md border bg-muted/50 px-3 py-2 text-left font-mono text-xs text-destructive">
+          {message}
+        </p>
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              router.invalidate();
+              clearError();
+            }}
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Try again
+          </button>
+          <a
+            href="/"
+            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            Go home
+          </a>
+        </div>
+      </div>
+    </div>
   );
 }

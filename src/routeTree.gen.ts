@@ -34,6 +34,7 @@ import { Route as AppCustomersIndexRouteImport } from './routes/_app.customers.i
 import { Route as AppCustomersIdRouteImport } from './routes/_app.customers.$id'
 import { Route as AppInventoryIndexRouteImport } from './routes/_app.inventory.index'
 import { Route as AppInventoryAdjustmentsRouteImport } from './routes/_app.inventory.adjustments'
+import { Route as AppInventoryExpiringRouteImport } from './routes/_app.inventory.expiring'
 import { Route as AppInventoryLowStockRouteImport } from './routes/_app.inventory.low-stock'
 import { Route as AppProductsIndexRouteImport } from './routes/_app.products.index'
 import { Route as AppProductsNewRouteImport } from './routes/_app.products.new'
@@ -185,6 +186,11 @@ const AppInventoryIndexRoute = AppInventoryIndexRouteImport.update({
 const AppInventoryAdjustmentsRoute = AppInventoryAdjustmentsRouteImport.update({
   id: '/inventory/adjustments',
   path: '/inventory/adjustments',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppInventoryExpiringRoute = AppInventoryExpiringRouteImport.update({
+  id: '/inventory/expiring',
+  path: '/inventory/expiring',
   getParentRoute: () => AppRoute,
 } as any)
 const AppInventoryLowStockRoute = AppInventoryLowStockRouteImport.update({
@@ -353,6 +359,7 @@ export interface FileRoutesByFullPath {
   '/accounts/$id': typeof AppAccountsIdRoute
   '/customers/$id': typeof AppCustomersIdRoute
   '/inventory/adjustments': typeof AppInventoryAdjustmentsRoute
+  '/inventory/expiring': typeof AppInventoryExpiringRoute
   '/inventory/low-stock': typeof AppInventoryLowStockRoute
   '/products/new': typeof AppProductsNewRoute
   '/purchases/new': typeof AppPurchasesNewRoute
@@ -405,6 +412,7 @@ export interface FileRoutesByTo {
   '/accounts/$id': typeof AppAccountsIdRoute
   '/customers/$id': typeof AppCustomersIdRoute
   '/inventory/adjustments': typeof AppInventoryAdjustmentsRoute
+  '/inventory/expiring': typeof AppInventoryExpiringRoute
   '/inventory/low-stock': typeof AppInventoryLowStockRoute
   '/products/new': typeof AppProductsNewRoute
   '/purchases/new': typeof AppPurchasesNewRoute
@@ -461,6 +469,7 @@ export interface FileRoutesById {
   '/_app/accounts/$id': typeof AppAccountsIdRoute
   '/_app/customers/$id': typeof AppCustomersIdRoute
   '/_app/inventory/adjustments': typeof AppInventoryAdjustmentsRoute
+  '/_app/inventory/expiring': typeof AppInventoryExpiringRoute
   '/_app/inventory/low-stock': typeof AppInventoryLowStockRoute
   '/_app/products/new': typeof AppProductsNewRoute
   '/_app/purchases/new': typeof AppPurchasesNewRoute
@@ -517,6 +526,7 @@ export interface FileRouteTypes {
     | '/accounts/$id'
     | '/customers/$id'
     | '/inventory/adjustments'
+    | '/inventory/expiring'
     | '/inventory/low-stock'
     | '/products/new'
     | '/purchases/new'
@@ -569,6 +579,7 @@ export interface FileRouteTypes {
     | '/accounts/$id'
     | '/customers/$id'
     | '/inventory/adjustments'
+    | '/inventory/expiring'
     | '/inventory/low-stock'
     | '/products/new'
     | '/purchases/new'
@@ -624,6 +635,7 @@ export interface FileRouteTypes {
     | '/_app/accounts/$id'
     | '/_app/customers/$id'
     | '/_app/inventory/adjustments'
+    | '/_app/inventory/expiring'
     | '/_app/inventory/low-stock'
     | '/_app/products/new'
     | '/_app/purchases/new'
@@ -843,6 +855,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppInventoryAdjustmentsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/inventory/expiring': {
+      id: '/_app/inventory/expiring'
+      path: '/inventory/expiring'
+      fullPath: '/inventory/expiring'
+      preLoaderRoute: typeof AppInventoryExpiringRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/inventory/low-stock': {
       id: '/_app/inventory/low-stock'
       path: '/inventory/low-stock'
@@ -1055,6 +1074,7 @@ interface AppRouteChildren {
   AppAccountsIdRoute: typeof AppAccountsIdRoute
   AppCustomersIdRoute: typeof AppCustomersIdRoute
   AppInventoryAdjustmentsRoute: typeof AppInventoryAdjustmentsRoute
+  AppInventoryExpiringRoute: typeof AppInventoryExpiringRoute
   AppInventoryLowStockRoute: typeof AppInventoryLowStockRoute
   AppProductsNewRoute: typeof AppProductsNewRoute
   AppPurchasesNewRoute: typeof AppPurchasesNewRoute
@@ -1099,6 +1119,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountsIdRoute: AppAccountsIdRoute,
   AppCustomersIdRoute: AppCustomersIdRoute,
   AppInventoryAdjustmentsRoute: AppInventoryAdjustmentsRoute,
+  AppInventoryExpiringRoute: AppInventoryExpiringRoute,
   AppInventoryLowStockRoute: AppInventoryLowStockRoute,
   AppProductsNewRoute: AppProductsNewRoute,
   AppPurchasesNewRoute: AppPurchasesNewRoute,

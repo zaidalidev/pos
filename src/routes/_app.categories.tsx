@@ -280,7 +280,7 @@ function CategoriesPage() {
                   autoFocus
                   value={dialog.data.name}
                   onChange={(e) => setDialog({ ...dialog, data: { ...dialog.data, name: e.target.value } })}
-                  placeholder={dialog.mode === "add-sub" || dialog.data.parentId ? "e.g. Silicone Cases" : "e.g. Mobile Covers"}
+                  placeholder={dialog.mode === "add-sub" || dialog.data.parentId ? "e.g. Newborn" : "e.g. Diapers"}
                 />
               </Field>
               <Field label="Description" hint="Optional. Shown on the category list.">

@@ -10,6 +10,7 @@ import { actions, productDeleteBlockReason, stockStatus, useDB } from "@/lib/sto
 import { pageHead, rs, supplierName } from "@/lib/format";
 import { exportTablePdf } from "@/lib/pdf";
 import { categoryLabel, matchesCategory, parentCategories, type Product } from "@/lib/mock-data";
+import { expiryBadge, expiryStatus, productSearchText, productVariantLabel, qtyWithUnit } from "@/lib/product-attrs";
 
 export const Route = createFileRoute("/_app/products/")({
   head: pageHead("Products", "Browse, search and manage your product catalogue."),
@@ -33,7 +34,7 @@ function ProductsPage() {
     () =>
       db.products.filter(
         (p) =>
-          (!q || `${p.name} ${p.sku} ${p.barcode} ${p.brand}`.toLowerCase().includes(q.toLowerCase())) &&
+          (!q || productSearchText(p).toLowerCase().includes(q.toLowerCase())) &&
           matchesCategory(db.categories, p.categoryId, cat) &&
           (sup === "all" || p.supplierId === sup) &&
           (stock === "all" || stockStatus(p) === stock),
@@ -54,7 +55,7 @@ function ProductsPage() {
           <ProductThumb product={p} />
           <div className="min-w-0">
             <p className="truncate font-medium">{p.name}</p>
-            <p className="text-xs text-muted-foreground">{p.sku} · {p.brand}</p>
+            <p className="truncate text-xs text-muted-foreground">{[p.sku, p.brand, productVariantLabel(p)].filter(Boolean).join(" · ")}</p>
           </div>
         </div>
       ),
@@ -63,8 +64,20 @@ function ProductsPage() {
     { key: "sup", header: "Supplier", cell: (p) => <span className="text-sm">{supName(p.supplierId)}</span>, mobileHidden: true },
     { key: "pp", header: "Purchase", cell: (p) => rs(p.purchasePrice), className: "text-right" },
     { key: "sp", header: "Sale", cell: (p) => <b>{rs(p.salePrice)}</b>, className: "text-right" },
-    { key: "stock", header: "Stock", cell: (p) => <span className={p.stock <= p.minStock ? "font-semibold text-warning" : ""}>{p.stock}</span>, className: "text-center" },
-    { key: "status", header: "Status", cell: (p) => <StatusBadge status={stockStatus(p)} /> },
+    { key: "stock", header: "Stock", cell: (p) => <span className={p.stock <= p.minStock ? "font-semibold text-warning" : ""}>{qtyWithUnit(p.stock, p.unit)}</span>, className: "text-center" },
+    {
+      key: "status",
+      header: "Status",
+      cell: (p) => {
+        const expiry = expiryBadge(p.stock > 0 ? expiryStatus(p.expiryDate) : "none");
+        return (
+          <span className="inline-flex flex-wrap gap-1">
+            <StatusBadge status={stockStatus(p)} />
+            {expiry ? <StatusBadge status={expiry} /> : null}
+          </span>
+        );
+      },
+    },
     {
       key: "actions",
       header: "",
@@ -145,7 +158,7 @@ function ProductsPage() {
       />
       <Card className="gap-0 overflow-hidden py-0 shadow-none">
         <FilterBar>
-          <SearchInput value={q} onChange={setQ} placeholder="Search name, SKU or barcode..." className="sm:w-72" />
+          <SearchInput value={q} onChange={setQ} placeholder="Search name, size, SKU or barcode..." className="sm:w-72" />
           <SearchableSelect
             value={cat}
             onChange={setCat}

@@ -19,6 +19,7 @@ import { ConfirmDialog, DataTable, EmptyState, PageHeader, ProductThumb, StatCar
 import { actions, productDeleteBlockReason, stockStatus, useDB } from "@/lib/store";
 import { fmtDateTime, pageHead, rs, supplierName } from "@/lib/format";
 import { categoryLabel } from "@/lib/mock-data";
+import { expiryBadge, expiryPhrase, expiryStatus, fmtExpiry, productVariantLabel, qtyWithUnit } from "@/lib/product-attrs";
 
 export const Route = createFileRoute("/_app/products/$id/")({
   head: pageHead("Product Details", "Product info, pricing, stock and movement history."),
@@ -205,7 +206,7 @@ function ProductDetail() {
       <PageHeader
         title={product.name}
         titleAside={<StatusBadge status={status} />}
-        description={`${product.sku}${product.brand ? ` · ${product.brand}` : ""}`}
+        description={[product.sku, product.brand, productVariantLabel(product)].filter(Boolean).join(" · ")}
         back={<Button variant="outline" asChild><Link to="/products"><ArrowLeft className="size-4" />Back</Link></Button>}
         actions={
           <>
@@ -243,6 +244,24 @@ function ProductDetail() {
             <div className="flex justify-between gap-3"><span className="text-muted-foreground">SKU</span><span className="font-mono text-xs">{product.sku}</span></div>
             <div className="flex justify-between gap-3"><span className="text-muted-foreground">Barcode</span><span className="font-mono text-xs">{product.barcode || "—"}</span></div>
             <div className="flex justify-between gap-3"><span className="text-muted-foreground">Brand</span><span>{product.brand || "—"}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Size / age</span><span>{product.size || "—"}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Gender</span><span>{product.gender || "—"}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Color</span><span>{product.color || "—"}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Unit</span><span>{product.unit || "Piece"}</span></div>
+            <div className="flex justify-between gap-3">
+              <span className="text-muted-foreground">Expiry</span>
+              {product.expiryDate ? (
+                <span className="text-right">
+                  <span className="block">{fmtExpiry(product.expiryDate)}</span>
+                  <span className="block text-xs text-muted-foreground">{expiryPhrase(product.expiryDate)}</span>
+                  {expiryBadge(expiryStatus(product.expiryDate)) ? (
+                    <span className="mt-1 flex justify-end"><StatusBadge status={expiryBadge(expiryStatus(product.expiryDate))!} /></span>
+                  ) : null}
+                </span>
+              ) : (
+                <span>—</span>
+              )}
+            </div>
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Supplier</span>
               {supplier ? (
@@ -266,7 +285,7 @@ function ProductDetail() {
 
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="In stock" value={product.stock} icon={Boxes} tone={status === "Out of Stock" ? "destructive" : status === "Low Stock" ? "warning" : "default"} />
+            <StatCard label="In stock" value={qtyWithUnit(product.stock, product.unit)} icon={Boxes} tone={status === "Out of Stock" ? "destructive" : status === "Low Stock" ? "warning" : "default"} />
             <StatCard label="Stock value" value={rs(stockValue)} icon={Banknote} tone="info" />
             <StatCard label="Margin" value={`${rs(margin)} (${marginPct}%)`} icon={TrendingUp} tone={margin >= 0 ? "success" : "destructive"} />
             <StatCard label="Sold" value={`${soldQty} · ${rs(soldValue)}`} icon={ShoppingBag} tone="info" />

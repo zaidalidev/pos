@@ -267,7 +267,7 @@ function AdminShops() {
               <Field label="Shop name" error={errors.shopName} className="sm:col-span-2">
                 <Input
                   autoFocus
-                  placeholder="Ali Mobile Accessories"
+                  placeholder="Ali Baby Shop"
                   value={form.shopName}
                   onChange={(e) => setForm({ ...form, shopName: e.target.value })}
                 />

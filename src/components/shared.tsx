@@ -65,6 +65,8 @@ const TONE: Record<string, string> = {
   Salesman: "info", Helper: "muted", Delivery: "info", Other: "muted",
   Edited: "warning",
   Suspended: "warning",
+  Expired: "destructive",
+  "Expiring soon": "warning",
 };
 export function StatusBadge({ status, className }: { status: string; className?: string }) {
   const t = TONE[status] ?? "info";

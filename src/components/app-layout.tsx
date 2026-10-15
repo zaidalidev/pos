@@ -20,6 +20,7 @@ import { rs } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AppLogo } from "@/components/app-logo";
 import { APP_NAME } from "@/lib/branding";
+import { productSearchText, productVariantLabel } from "@/lib/product-attrs";
 import { useShopFavicon } from "@/lib/use-shop-favicon";
 
 type To = keyof FileRoutesByTo;
@@ -64,6 +65,7 @@ function crumbs(pathname: string): { label: string; to?: To }[] {
   if (pathname === "/settings/notifications") return [{ label: "Notification Settings" }];
   if (pathname === "/settings/shop") return [{ label: "Shop Settings" }];
   if (pathname.startsWith("/inventory/adjustments")) return [{ label: "Stock Adjustments" }];
+  if (pathname.startsWith("/inventory/expiring")) return [{ label: "Expiring Stock" }];
   if (pathname === "/profile") return [{ label: "Profile" }];
   if (pathname.startsWith("/reports/inventory/")) {
     const slug = pathname.replace(/^\/reports\/inventory\//, "").replace(/\/$/, "");
@@ -156,7 +158,7 @@ function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (o: boolean) 
       return out;
     };
     return {
-      products: take(db.products, (p) => match(`${p.name} ${p.sku} ${p.barcode} ${p.brand}`)),
+      products: take(db.products, (p) => match(productSearchText(p))),
       customers: take(db.customers, (c) => match(`${c.name} ${c.phone}`)),
       staff: take(db.staff, (s) => match(`${s.name} ${s.phone} ${s.role}`)),
       suppliers: take(db.suppliers, (s) => match(`${s.name} ${s.phone} ${s.city}`)),
@@ -191,7 +193,7 @@ function GlobalSearch({ open, setOpen }: { open: boolean; setOpen: (o: boolean) 
           <CommandGroup heading="Products">
             {results.products.map((p) => (
               <CommandItem key={p.id} value={`product ${p.id}`} onSelect={() => go(() => navigate({ to: "/products/$id", params: { id: p.id } }))}>
-                <span className="flex-1 truncate">{p.name}</span><span className="text-xs text-muted-foreground">{p.sku} · {p.stock} in stock</span>
+                <span className="flex-1 truncate">{p.name}</span><span className="truncate text-xs text-muted-foreground">{[productVariantLabel(p), p.sku, `${p.stock} in stock`].filter(Boolean).join(" · ")}</span>
               </CommandItem>
             ))}
           </CommandGroup>

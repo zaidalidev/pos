@@ -107,7 +107,7 @@ function Signup() {
           </div>
           <form onSubmit={submit} className="space-y-4">
             <Field label="Shop name" error={errors.shopName}>
-              <Input placeholder="Al-Karam Mobile Accessories" value={shopName} onChange={(e) => setShopName(e.target.value)} />
+              <Input placeholder="Little Stars Baby Shop" value={shopName} onChange={(e) => setShopName(e.target.value)} />
             </Field>
             <Field label="Owner name" error={errors.ownerName}>
               <Input placeholder="Zaid Ali" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} />

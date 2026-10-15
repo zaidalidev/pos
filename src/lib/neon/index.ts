@@ -22,6 +22,7 @@ export {
   mergePulledBags,
   neonRootHasData,
   pullRootFromNeon,
+  pullShopBag,
   pushRootToNeon,
   scheduleNeonSync,
 } from "./sync";

@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Banknote, Boxes, ChevronLeft, ChevronRight, FileText, History, MoreHorizontal, PackageX, SlidersHorizontal, TriangleAlert } from "lucide-react";
+import { Banknote, Boxes, CalendarClock, ChevronLeft, ChevronRight, FileText, History, MoreHorizontal, PackageX, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,6 +10,7 @@ import { stockStatus, useDB } from "@/lib/store";
 import { fmtDateTime, pageHead, rs } from "@/lib/format";
 import { exportTablePdf } from "@/lib/pdf";
 import type { Product } from "@/lib/mock-data";
+import { productSearchText, productVariantLabel, productsAtRisk, qtyWithUnit } from "@/lib/product-attrs";
 
 export const Route = createFileRoute("/_app/inventory/")({
   head: pageHead("Stock", "Current stock, valuation, and movement history."),
@@ -68,7 +69,7 @@ function StockPage() {
     () =>
       db.products.filter(
         (p) =>
-          (!q || `${p.name} ${p.sku} ${p.barcode} ${p.brand}`.toLowerCase().includes(q.toLowerCase())) &&
+          (!q || productSearchText(p).toLowerCase().includes(q.toLowerCase())) &&
           (status === "all" || stockStatus(p) === status),
       ),
     [db.products, q, status],
@@ -96,13 +97,13 @@ function StockPage() {
           <ProductThumb product={p} />
           <div className="min-w-0">
             <p className="truncate font-medium">{p.name}</p>
-            <p className="text-xs text-muted-foreground">{p.brand}</p>
+            <p className="truncate text-xs text-muted-foreground">{[p.brand, productVariantLabel(p)].filter(Boolean).join(" · ") || "—"}</p>
           </div>
         </div>
       ),
     },
     { key: "sku", header: "SKU", cell: (p) => <span className="font-mono text-xs">{p.sku}</span> },
-    { key: "stock", header: "Current Stock", cell: (p) => <span className={p.stock <= p.minStock ? "font-semibold text-warning" : ""}>{p.stock}</span>, className: "text-center" },
+    { key: "stock", header: "Current Stock", cell: (p) => <span className={p.stock <= p.minStock ? "font-semibold text-warning" : ""}>{qtyWithUnit(p.stock, p.unit)}</span>, className: "text-center" },
     { key: "pp", header: "Purchase Price", cell: (p) => rs(p.purchasePrice), className: "text-right", mobileHidden: true },
     { key: "sp", header: "Sale Price", cell: (p) => rs(p.salePrice), className: "text-right", mobileHidden: true },
     { key: "value", header: "Stock Value", cell: (p) => <b>{rs(p.stock * p.purchasePrice)}</b>, className: "text-right" },
@@ -186,6 +187,7 @@ function StockPage() {
               { value: "Out of Stock", label: "Out of Stock" },
             ]}
           />
+          <Button asChild variant="outline"><Link to="/inventory/expiring"><CalendarClock className="size-4" />Expiring ({productsAtRisk(db.products).length})</Link></Button>
           <Button variant="outline" onClick={doPdf} className="sm:ml-auto"><FileText className="size-4" />PDF</Button>
         </FilterBar>
         <DataTable

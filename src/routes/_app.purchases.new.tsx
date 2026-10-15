@@ -12,6 +12,7 @@ import { CurrencyInput, Field, PageHeader, ProductThumb, SearchableSelect, Simpl
 import { actions, getState, isCreditAccount, useDB } from "@/lib/store";
 import { pageHead, rs } from "@/lib/format";
 import { accountIdOf, parentCategories, type Purchase } from "@/lib/mock-data";
+import { productVariantLabel } from "@/lib/product-attrs";
 
 type SupplierDialog = { name: string; phone: string; address: string; city: string };
 const emptySupplier: SupplierDialog = { name: "", phone: "", address: "", city: "" };
@@ -85,7 +86,10 @@ function NewPurchase() {
   }, [editId, editing, editingBlocked, editLoaded, navigate, creditAccountId]);
 
   const productOpts = useMemo(
-    () => db.products.filter((p) => p.active).map((p) => ({ value: p.id, label: `${p.name} · ${rs(p.purchasePrice)}` })),
+    () => db.products.filter((p) => p.active).map((p) => {
+      const variant = productVariantLabel(p);
+      return { value: p.id, label: `${p.name}${variant ? ` · ${variant}` : ""} · ${rs(p.purchasePrice)}` };
+    }),
     [db.products],
   );
 
@@ -155,6 +159,11 @@ function NewPurchase() {
       barcode: "",
       categoryId: productDialog.categoryId,
       brand: "",
+      size: "",
+      gender: "",
+      color: "",
+      expiryDate: "",
+      unit: "Piece",
       purchasePrice: productDialog.purchasePrice,
       salePrice: productDialog.salePrice,
       wholesalePrice: 0,

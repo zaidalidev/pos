@@ -18,6 +18,9 @@ import {
   schedulePersist,
   type PersistRoot,
 } from "./persist";
+import { bagCounts, dirtySlices, type SaveScope, type ShopCounts } from "./bag-slices";
+import { readShopImages } from "./image-db";
+import { normalizeProduct } from "./product-attrs";
 import {
   flushNeonSync,
   getNeonSession,
@@ -31,6 +34,7 @@ import {
   neonSignOut,
   neonSignUp,
   pullRootFromNeon,
+  pullShopBag,
   pushRootToNeon,
   scheduleNeonSync,
 } from "./neon";
@@ -69,6 +73,7 @@ type RootState = {
   bags: Record<string, ShopBag>;
   allUsers: M.User[];
   platformFees: M.PlatformFee[];
+  shopCounts: Record<string, ShopCounts>;
   sessionUserId: string | null;
   viewingShopId: string | null;
   currentUser: string;
@@ -110,6 +115,7 @@ function seedRoot(): RootState {
     bags: {},
     allUsers: M.users.map((u) => normalizeUser(u)),
     platformFees: [],
+    shopCounts: {},
     sessionUserId: null,
     viewingShopId: null,
     currentUser: "Guest",
@@ -117,7 +123,9 @@ function seedRoot(): RootState {
 }
 
 function normalizeBag(bag: Partial<ShopBag> | undefined): ShopBag {
-  return { ...emptyShopBag(), ...(bag ?? {}) };
+  const next = { ...emptyShopBag(), ...(bag ?? {}) };
+  next.products = (next.products ?? []).map((p) => normalizeProduct(p));
+  return next;
 }
 
 /** Drop legacy seeded demo shops only — never auto-remove live/orphan shops. */
@@ -146,10 +154,12 @@ function stripDemoShop(state: RootState): { state: RootState; changed: boolean }
       u.id !== "u1",
   );
   const platformFees = (state.platformFees ?? []).filter((f) => !removeIds.has(f.shopId));
+  const shopCounts = { ...(state.shopCounts ?? {}) };
+  for (const id of removeIds) delete shopCounts[id];
   const viewingShopId =
     state.viewingShopId && bags[state.viewingShopId] ? state.viewingShopId : null;
   return {
-    state: { ...state, shops, bags, allUsers, platformFees, viewingShopId },
+    state: { ...state, shops, bags, allUsers, platformFees, shopCounts, viewingShopId },
     changed: true,
   };
 }
@@ -159,6 +169,7 @@ function hydrateFromPersist(data: {
   bags: Record<string, Partial<ShopBag>>;
   allUsers: M.User[];
   platformFees?: M.PlatformFee[];
+  shopCounts?: Record<string, ShopCounts>;
   sessionUserId: string | null;
   viewingShopId: string | null;
   currentUser?: string;
@@ -171,6 +182,7 @@ function hydrateFromPersist(data: {
   const rawBags = data.bags && typeof data.bags === "object" ? data.bags : seed.bags;
   const bags: Record<string, ShopBag> = {};
   for (const shop of shops) {
+    if (!rawBags[shop.id]) continue;
     bags[shop.id] = pruneBag(normalizeBag(rawBags[shop.id]));
   }
   for (const [id, bag] of Object.entries(rawBags)) {
@@ -183,6 +195,7 @@ function hydrateFromPersist(data: {
     platformFees: Array.isArray(data.platformFees)
       ? data.platformFees.slice(0, RETENTION.platformFees)
       : [],
+    shopCounts: data.shopCounts ?? {},
     sessionUserId: sessionUser ? data.sessionUserId : null,
     viewingShopId: data.viewingShopId && bags[data.viewingShopId] ? data.viewingShopId : null,
     currentUser: sessionUser?.name ?? data.currentUser ?? "Guest",
@@ -243,27 +256,45 @@ function toPersistRoot(r: RootState): PersistRoot {
     bags: r.bags as PersistRoot["bags"],
     allUsers: r.allUsers,
     platformFees: r.platformFees,
+    shopCounts: r.shopCounts,
     sessionUserId: r.sessionUserId,
     viewingShopId: r.viewingShopId,
     currentUser: r.currentUser,
   };
 }
 
-function saveRoot(r: RootState) {
-  const persistRoot = toPersistRoot(r);
-  schedulePersist(persistRoot);
-  scheduleNeonSync(persistRoot);
+function stampCounts(r: RootState, scope?: SaveScope): RootState {
+  if (scope?.slices && scope.slices.length === 0) return r;
+  const ids = scope?.shopId ? [scope.shopId] : Object.keys(r.bags);
+  let counts = r.shopCounts;
+  let changed = false;
+  for (const id of ids) {
+    const bag = r.bags[id];
+    if (!bag) continue;
+    const next = bagCounts(bag);
+    const prev = counts[id];
+    if (prev && prev.products === next.products && prev.sales === next.sales && prev.customers === next.customers) continue;
+    if (!changed) {
+      counts = { ...counts };
+      changed = true;
+    }
+    counts[id] = next;
+  }
+  return changed ? { ...r, shopCounts: counts } : r;
 }
 
-function replaceRoot(next: RootState, opts?: { persistLocal?: boolean; syncNeon?: boolean }) {
-  root = next;
+function saveRoot(r: RootState, scope?: SaveScope) {
+  const persistRoot = toPersistRoot(r);
+  schedulePersist(persistRoot, scope);
+  scheduleNeonSync(persistRoot, scope);
+}
+
+function replaceRoot(next: RootState, opts?: { persistLocal?: boolean; syncNeon?: boolean; scope?: SaveScope }) {
+  root = stampCounts(next, opts?.scope);
   invalidateSnapshots();
-  if (opts?.persistLocal !== false) {
-    schedulePersist(toPersistRoot(root));
-  }
-  if (opts?.syncNeon) {
-    scheduleNeonSync(toPersistRoot(root));
-  }
+  const persistRoot = toPersistRoot(root);
+  if (opts?.persistLocal !== false) schedulePersist(persistRoot, opts?.scope);
+  if (opts?.syncNeon) scheduleNeonSync(persistRoot, opts?.scope);
   listeners.forEach((l) => l());
 }
 
@@ -483,8 +514,54 @@ function applyLocalSession(user: M.User, authId?: string) {
  * Sync Neon Auth cookie session → store, and pull shop data from Neon Data API.
  * Call once on app boot before trusting route guards.
  */
+async function hydrateLocalImages(): Promise<void> {
+  const ids = Object.keys(root.bags);
+  if (!ids.length) return;
+  const bags = { ...root.bags };
+  let changed = false;
+  for (const id of ids) {
+    const images = await readShopImages(id);
+    const current = bags[id];
+    if (!current || !Object.keys(images).length) continue;
+    let touched = false;
+    const products = current.products.map((product) => {
+      if (product.image || !images[product.id]) return product;
+      touched = true;
+      return { ...product, image: images[product.id]! };
+    });
+    if (!touched) continue;
+    bags[id] = { ...current, products };
+    changed = true;
+  }
+  if (!changed) return;
+  replaceRoot({ ...root, bags }, { persistLocal: false, syncNeon: false });
+}
+
+async function refreshShopBag(shopId: string): Promise<void> {
+  if (!isNeonDataConfigured()) return;
+  try {
+    const remote = await pullShopBag(shopId);
+    if (!remote) return;
+    const localBag = root.bags[shopId];
+    const { bags, keptLocalRecords } = mergePulledBags(
+      { [shopId]: remote },
+      localBag ? { [shopId]: localBag } : {},
+      [shopId],
+    );
+    const merged = bags[shopId];
+    if (!merged) return;
+    replaceRoot(
+      { ...root, bags: { ...root.bags, [shopId]: normalizeBag(merged as Partial<ShopBag>) } },
+      { persistLocal: true, syncNeon: keptLocalRecords, scope: { shopId } },
+    );
+  } catch (err) {
+    console.warn("[neon-sync] shop bag pull failed", err);
+  }
+}
+
 export async function hydrateAuthSession(): Promise<void> {
   try {
+    await hydrateLocalImages();
     const session = await getNeonSession();
     if (!session?.user) {
       if (root.sessionUserId) clearLocalSession();
@@ -540,10 +617,11 @@ export async function hydrateAuthSession(): Promise<void> {
   }
 }
 
-function commitRoot(next: RootState, opts?: { flush?: boolean }) {
-  root = next;
+function commitRoot(next: RootState, opts?: { flush?: boolean; scope?: SaveScope }) {
+  const scope = opts?.scope ?? { slices: [] };
+  root = stampCounts(next, scope);
   invalidateSnapshots();
-  saveRoot(root);
+  saveRoot(root, scope);
   if (opts?.flush) {
     flushPersist();
     void flushNeonSync();
@@ -553,7 +631,9 @@ function commitRoot(next: RootState, opts?: { flush?: boolean }) {
 
 export function setState(fn: (s: State) => Partial<State>) {
   const patch = fn(getState());
-  commitRoot(applyPatch(root, patch));
+  const shopId = activeShopIdOf(root) ?? undefined;
+  const slices = dirtySlices(shopId ? root.bags[shopId]?.products : undefined, patch as Record<string, unknown>);
+  commitRoot(applyPatch(root, patch), { scope: shopId ? { slices, shopId } : { slices: [] } });
 }
 
 export function getState(): State {
@@ -588,10 +668,11 @@ function platformView(): PlatformView {
       viewingShopId: root.viewingShopId,
       shopStats: (shopId: string) => {
         const bag = root.bags[shopId];
+        const counts = root.shopCounts[shopId];
         return {
-          products: bag?.products?.length ?? 0,
-          sales: bag?.sales?.length ?? 0,
-          customers: bag?.customers?.length ?? 0,
+          products: bag ? bag.products.length : counts?.products ?? 0,
+          sales: bag ? bag.sales.length : counts?.sales ?? 0,
+          customers: bag ? bag.customers.length : counts?.customers ?? 0,
           users: root.allUsers.filter((u) => u.shopId === shopId && !u.isPlatformAdmin).length,
         };
       },
@@ -1060,14 +1141,15 @@ export const actions = {
     return "ok";
   },
   addProduct(p: Omit<M.Product, "id">) {
+    const product = normalizeProduct(p);
     const id = uid("p");
-    const openingQty = Math.max(0, Math.floor(p.stock) || 0);
+    const openingQty = Math.max(0, Math.floor(product.stock) || 0);
     // Catalogue starts at 0; opening stock is recorded as a purchase so history stays correct.
-    setState((s) => ({ products: [{ ...p, id, stock: 0 }, ...s.products] }));
-    if (openingQty > 0 && p.supplierId) {
+    setState((s) => ({ products: [{ ...product, id, stock: 0 }, ...s.products] }));
+    if (openingQty > 0 && product.supplierId) {
       actions.addPurchase({
-        supplierId: p.supplierId,
-        items: [{ productId: id, name: p.name, qty: openingQty, price: p.purchasePrice, cost: p.purchasePrice }],
+        supplierId: product.supplierId,
+        items: [{ productId: id, name: product.name, qty: openingQty, price: product.purchasePrice, cost: product.purchasePrice }],
         discount: 0,
         paid: 0,
         notes: "Opening stock from new product",
@@ -1077,7 +1159,7 @@ export const actions = {
     return id;
   },
   updateProduct(id: string, patch: Partial<M.Product>) {
-    setState((s) => ({ products: s.products.map((p) => (p.id === id ? { ...p, ...patch } : p)) }));
+    setState((s) => ({ products: s.products.map((p) => (p.id === id ? normalizeProduct({ ...p, ...patch }) : p)) }));
   },
   deleteProduct(id: string): "ok" | "not_found" | "blocked" {
     const s = getState();
@@ -1433,7 +1515,8 @@ export const actions = {
     if (!user?.isPlatformAdmin) return { ok: false, error: "Only platform admin can enter shops." };
     const shop = root.shops.find((s) => s.id === shopId);
     if (!shop) return { ok: false, error: "Shop not found." };
-    commitRoot({ ...root, viewingShopId: shopId });
+    commitRoot({ ...root, viewingShopId: shopId }, { scope: { slices: [] } });
+    void refreshShopBag(shopId);
     return { ok: true };
   },
   exitShop() {
@@ -1579,7 +1662,7 @@ export const actions = {
       bags: { ...root.bags, [shopId]: emptyShopBag(settings) },
       allUsers: [...root.allUsers, user],
       platformFees,
-    }, { flush: true });
+    }, { flush: true, scope: { shopId, slices: ["catalogue"] } });
     await flushNeonSync();
     return { ok: true, shopId };
   },
@@ -1654,7 +1737,7 @@ export const actions = {
       sessionUserId: userId,
       viewingShopId: null,
       currentUser: user.name,
-    }, { flush: true });
+    }, { flush: true, scope: platformAdmin ? { slices: [] } : { shopId, slices: ["catalogue"] } });
     await flushNeonSync();
     setAuthReady(true);
     return { ok: true };

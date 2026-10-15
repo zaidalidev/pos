@@ -1,5 +1,6 @@
-/* shoponclick PWA service worker — installability + light offline shell cache */
-const CACHE = "dukanonclick-v7";
+/* shoponclick PWA service worker — installability + offline shell only.
+   Do not cache every same-origin GET; that cache grows without a cap. */
+const CACHE = "dukanonclick-v8";
 const PRECACHE = ["/", "/manifest.webmanifest", "/pwa-192x192.png", "/pwa-512x512.png"];
 
 self.addEventListener("install", (event) => {
@@ -29,21 +30,9 @@ self.addEventListener("fetch", (event) => {
   // can break credentialed session cookies and get-session responses.
   if (url.origin !== self.location.origin) return;
 
-  // Navigations and auth-ish paths: network only (no HTML fallback tricks).
-  if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/")));
-    return;
-  }
+  // Navigations: network only, fall back to the cached shell when offline.
+  // Scripts, styles, and API calls stay on the network / HTTP cache.
+  if (request.mode !== "navigate") return;
 
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        const copy = response.clone();
-        if (response.ok) {
-          caches.open(CACHE).then((cache) => cache.put(request, copy));
-        }
-        return response;
-      })
-      .catch(() => caches.match(request).then((cached) => cached || Response.error())),
-  );
+  event.respondWith(fetch(request).catch(() => caches.match("/")));
 });

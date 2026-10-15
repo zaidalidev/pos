@@ -1,6 +1,16 @@
+import type { ProductGender, ProductUnit } from "@/lib/product-attrs";
+
 export type Category = { id: string; name: string; description: string; parentId: string | null };
 export type Product = {
   id: string; name: string; sku: string; barcode: string; categoryId: string; brand: string;
+  /** Age or clothing/diaper size, e.g. 3-6M or M. Empty when the product has no size. */
+  size: string;
+  /** Empty when gender does not apply. */
+  gender: ProductGender;
+  color: string;
+  /** YYYY-MM-DD. Empty when the product does not expire. */
+  expiryDate: string;
+  unit: ProductUnit;
   purchasePrice: number; salePrice: number; wholesalePrice: number; stock: number; minStock: number;
   supplierId: string; image?: string; description: string; active: boolean;
 };
@@ -184,7 +194,7 @@ export const parentCategories = (list: Category[]) => list.filter((c) => !c.pare
 /** Subcategories of a parent (or all if no parent given) */
 export const subcategoriesOf = (list: Category[], parentId?: string) =>
   list.filter((c) => (parentId ? c.parentId === parentId : !!c.parentId));
-/** Display path like "Mobile Covers › Silicone Cases" */
+/** Display path like "Diapers › Newborn" */
 export function categoryLabel(list: Category[], id: string) {
   const cat = list.find((c) => c.id === id);
   if (!cat) return "—";

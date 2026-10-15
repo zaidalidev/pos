@@ -1,12 +1,25 @@
 /**
  * Lean local persistence for shoponclick.
- * - Splits session / meta / per-shop bags so one write does not rewrite everything
- * - Debounces disk writes during rapid POS updates
- * - Caps ephemeral collections so localStorage (and future Neon sync) stays small
- * - Migrates the old monolith key shopflow-auth-v2 once
+ * - Session and shop list stay in their own keys
+ * - Each shop bag is stored as catalogue / sales / ledger slices
+ * - Product photos go to IndexedDB, never into these keys
+ * - A sale rewrites only the slices that changed
  */
 
+import {
+  BAG_SLICES,
+  joinBag,
+  splitBag,
+  unionSaveScope,
+  type BagSlice,
+  type SaveScope,
+  type ShopCounts,
+  type SyncSlice,
+} from "./bag-slices";
+import { deleteShopImages, writeShopImages } from "./image-db";
 import type { PlatformFee, Product, Shop, User } from "./mock-data";
+
+export type { SaveScope };
 
 const LEGACY_V2 = "shopflow-auth-v2";
 const LEGACY_V1 = "shopflow-auth-v1";
@@ -45,6 +58,8 @@ export type PersistMeta = {
   shops: Shop[];
   allUsers: User[];
   platformFees: PlatformFee[];
+  /** Counts for shops whose full bag is not loaded (admin list). */
+  shopCounts?: Record<string, ShopCounts>;
 };
 
 export type PersistRoot = PersistSession & PersistMeta & {
@@ -58,10 +73,17 @@ type LegacyV2 = PersistMeta & PersistSession & {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let pending: PersistRoot | null = null;
+let pendingScope: SaveScope | undefined;
+let pendingScopeSet = false;
 let lastSessionJson = "";
 let lastMetaJson = "";
-let lastBagJson = new Map<string, string>();
+/** `${shopId}:${slice}` → last JSON written. */
+let lastSliceJson = new Map<string, string>();
 let unloadBound = false;
+
+function sliceStorageKey(shopId: string, slice: BagSlice) {
+  return `${BAG_PREFIX}${shopId}:${slice}`;
+}
 
 function safeParse<T>(raw: string | null): T | null {
   if (!raw) return null;
@@ -115,6 +137,42 @@ function bagKey(shopId: string) {
   return `${BAG_PREFIX}${shopId}`;
 }
 
+/** Slice keys win. Photos still sitting on the old single key are copied across until IndexedDB has them. */
+function readStoredBag(shopId: string): PersistBag | null {
+  const parts: Partial<Record<BagSlice, PersistBag>> = {};
+  let foundSlice = false;
+  for (const slice of BAG_SLICES) {
+    const parsed = safeParse<PersistBag>(localStorage.getItem(sliceStorageKey(shopId, slice)));
+    if (!parsed) continue;
+    parts[slice] = parsed;
+    foundSlice = true;
+  }
+  const legacy = safeParse<PersistBag>(localStorage.getItem(bagKey(shopId)));
+  if (!foundSlice) return legacy;
+  const bag = joinBag(parts) as PersistBag;
+  const legacyProducts = legacy?.products;
+  if (!Array.isArray(bag.products) || !Array.isArray(legacyProducts)) return bag;
+  const images = new Map<string, string>();
+  for (const product of legacyProducts) {
+    if (product?.image) images.set(product.id, product.image);
+  }
+  if (!images.size) return bag;
+  bag.products = bag.products.map((product) => {
+    const image = images.get(product.id);
+    return !product.image && image ? { ...product, image } : product;
+  });
+  return bag;
+}
+
+function deleteShopStorage(shopId: string) {
+  localStorage.removeItem(bagKey(shopId));
+  for (const slice of BAG_SLICES) {
+    localStorage.removeItem(sliceStorageKey(shopId, slice));
+    lastSliceJson.delete(`${shopId}:${slice}`);
+  }
+  void deleteShopImages(shopId);
+}
+
 function readSplit(): PersistRoot | null {
   if (typeof window === "undefined") return null;
   const session = safeParse<PersistSession>(localStorage.getItem(SESSION_KEY));
@@ -123,15 +181,13 @@ function readSplit(): PersistRoot | null {
 
   const ids = safeParse<string[]>(localStorage.getItem(INDEX_KEY)) ?? meta.shops.map((s) => s.id);
   const bags: Record<string, PersistBag> = {};
-  for (const id of ids) {
-    const bag = safeParse<PersistBag>(localStorage.getItem(bagKey(id)));
+  const loadId = (id: string) => {
+    if (bags[id]) return;
+    const bag = readStoredBag(id);
     if (bag) bags[id] = pruneBag(bag);
-  }
-  for (const shop of meta.shops) {
-    if (bags[shop.id]) continue;
-    const bag = safeParse<PersistBag>(localStorage.getItem(bagKey(shop.id)));
-    if (bag) bags[shop.id] = pruneBag(bag);
-  }
+  };
+  for (const id of ids) loadId(id);
+  for (const shop of meta.shops) loadId(shop.id);
 
   const user = meta.allUsers.find((u) => u.id === session.sessionUserId);
   return {
@@ -189,7 +245,30 @@ function writeKey(key: string, json: string, cache: { get: () => string; set: (v
   cache.set(json);
 }
 
-function writeSplitNow(raw: PersistRoot) {
+function writeBagSlices(shopId: string, bag: PersistBag, slices: SyncSlice[] | undefined) {
+  const pruned = pruneBag(bag);
+  const { slices: parts, images } = splitBag(pruned);
+  const wanted = slices ?? [...BAG_SLICES, "images" as const];
+  for (const slice of BAG_SLICES) {
+    if (!wanted.includes(slice)) continue;
+    const json = JSON.stringify(parts[slice]);
+    const cacheKey = `${shopId}:${slice}`;
+    if (lastSliceJson.get(cacheKey) === json) continue;
+    localStorage.setItem(sliceStorageKey(shopId, slice), json);
+    lastSliceJson.set(cacheKey, json);
+  }
+  if (wanted.includes("images")) {
+    void writeShopImages(shopId, images).finally(() => {
+      try {
+        localStorage.removeItem(bagKey(shopId));
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+}
+
+function writeSplitNow(raw: PersistRoot, scope?: SaveScope, attempt = 0) {
   if (typeof window === "undefined") return;
   const r = pruneRoot(raw);
   try {
@@ -201,6 +280,7 @@ function writeSplitNow(raw: PersistRoot) {
       shops: r.shops,
       allUsers: r.allUsers,
       platformFees: r.platformFees,
+      shopCounts: r.shopCounts ?? {},
     };
     writeKey(SESSION_KEY, JSON.stringify(session), {
       get: () => lastSessionJson,
@@ -211,24 +291,27 @@ function writeSplitNow(raw: PersistRoot) {
       set: (v) => { lastMetaJson = v; },
     });
 
+    if (scope?.slices && scope.slices.length === 0) return;
+
     const ids = Object.keys(r.bags);
     localStorage.setItem(INDEX_KEY, JSON.stringify(ids));
-
-    const seen = new Set(ids);
-    for (const id of ids) {
-      const json = JSON.stringify(r.bags[id]);
-      const prev = lastBagJson.get(id);
-      if (prev === json) continue;
-      localStorage.setItem(bagKey(id), json);
-      lastBagJson.set(id, json);
+    const shopIds = scope?.shopId ? [scope.shopId] : ids;
+    for (const id of shopIds) {
+      const bag = r.bags[id];
+      if (!bag) continue;
+      writeBagSlices(id, bag, scope?.slices);
     }
-    for (const id of [...lastBagJson.keys()]) {
-      if (seen.has(id)) continue;
-      localStorage.removeItem(bagKey(id));
-      lastBagJson.delete(id);
+    if (!scope?.shopId) {
+      const keep = new Set(ids);
+      for (const cacheKey of [...lastSliceJson.keys()]) {
+        const shopId = cacheKey.slice(0, cacheKey.lastIndexOf(":"));
+        if (keep.has(shopId)) continue;
+        deleteShopStorage(shopId);
+      }
     }
   } catch (err) {
-    console.warn("[shopflow] persist failed, retrying without product images", err);
+    if (attempt > 0) return;
+    console.warn("[shopflow] persist failed, retrying with shorter lists", err);
     try {
       const stripped: PersistRoot = {
         ...r,
@@ -246,8 +329,8 @@ function writeSplitNow(raw: PersistRoot) {
       };
       lastSessionJson = "";
       lastMetaJson = "";
-      lastBagJson.clear();
-      writeSplitNow(stripped);
+      lastSliceJson.clear();
+      writeSplitNow(stripped, scope, attempt + 1);
     } catch {
       /* give up — memory state still works */
     }
@@ -266,15 +349,42 @@ function bindUnload() {
 }
 
 /** Schedule a debounced write. Rapid POS updates coalesce into one disk write. */
-export function schedulePersist(root: PersistRoot) {
+function rememberScope(scope: SaveScope | undefined) {
+  if (!pendingScopeSet) {
+    pendingScope = scope;
+    pendingScopeSet = true;
+    return;
+  }
+  // A missing slice list means "write every slice" and must not be narrowed by a later meta-only save.
+  if (pendingScope?.slices === undefined || scope?.slices === undefined) {
+    pendingScope = {};
+    return;
+  }
+  pendingScope = unionSaveScope(pendingScope, scope);
+}
+
+export function schedulePersist(root: PersistRoot, scope?: SaveScope) {
+  rememberScope(scope);
   pending = root;
+  const imageBag = scope?.shopId ? root.bags[scope.shopId] : undefined;
+  if (scope?.slices?.includes("images") && scope.shopId && imageBag) {
+    const { images } = splitBag(pruneBag(imageBag));
+    void writeShopImages(scope.shopId, images);
+  }
   bindUnload();
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;
-    if (!pending) return;
-    writeSplitNow(pending);
+    if (!pending) {
+      pendingScope = undefined;
+      pendingScopeSet = false;
+      return;
+    }
+    const nextScope = pendingScope;
+    writeSplitNow(pending, nextScope);
     pending = null;
+    pendingScope = undefined;
+    pendingScopeSet = false;
   }, SAVE_DEBOUNCE_MS);
 }
 
@@ -285,8 +395,11 @@ export function flushPersist() {
     saveTimer = null;
   }
   if (!pending) return;
-  writeSplitNow(pending);
+  const nextScope = pendingScope;
+  writeSplitNow(pending, nextScope);
   pending = null;
+  pendingScope = undefined;
+  pendingScopeSet = false;
 }
 
 /** Approximate persisted size in bytes (for diagnostics). */

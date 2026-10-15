@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DateRangePicker, PageHeader, StatCard, StatusBadge, ProductThumb, EmptyState } from "@/components/shared";
 import { due, saleDue, saleProfit, stockStatus, useDB } from "@/lib/store";
+import { expiryBadge, expiryPhrase, expiryStatus, productsAtRisk, productVariantLabel } from "@/lib/product-attrs";
 import { takeRecent } from "@/lib/query";
 import { fmtDate, fmtTime, inRange, pageHead, rs, toDateInput, type Range } from "@/lib/format";
 
@@ -106,6 +107,9 @@ function Dashboard() {
     };
   }, [db, range]);
   const low = db.products.filter((p) => p.stock <= p.minStock).slice(0, 6);
+  const atRisk = useMemo(() => productsAtRisk(db.products), [db.products]);
+  const expiredCount = atRisk.filter((p) => expiryStatus(p.expiryDate) === "expired").length;
+  const soonCount = atRisk.length - expiredCount;
   const cust = (id: string | null) => db.customers.find((c) => c.id === id)?.name ?? "Walk-in customer";
 
   return (
@@ -122,6 +126,15 @@ function Dashboard() {
           </>
         }
       />
+      {atRisk.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+          <p className="flex items-center gap-2 font-medium">
+            <AlertTriangle className="size-4 shrink-0 text-warning" />
+            {[expiredCount ? `${expiredCount} expired` : "", soonCount ? `${soonCount} expiring within 30 days` : ""].filter(Boolean).join(" · ")}
+          </p>
+          <Button asChild size="sm" variant="outline"><Link to="/inventory/expiring">View list</Link></Button>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Sales" value={rs(d.sales)} hint={`${d.itemsSold} items sold`} icon={Receipt} />
         <StatCard label="Profit" value={rs(d.profit)} icon={TrendingUp} tone="success" />
@@ -198,6 +211,26 @@ function Dashboard() {
           </CardContent>
         </Card>
         <div className="space-y-4">
+          {atRisk.length > 0 && (
+            <Card className="gap-0 shadow-none">
+              <CardHeader className="flex-row items-center justify-between pb-3"><CardTitle className="text-base">Expiring Stock</CardTitle><Link to="/inventory/expiring" className="text-sm font-medium text-primary">View all</Link></CardHeader>
+              <CardContent className="space-y-2.5">
+                {atRisk.slice(0, 6).map((p) => {
+                  const badge = expiryBadge(expiryStatus(p.expiryDate));
+                  return (
+                    <Link key={p.id} to="/products/$id" params={{ id: p.id }} className="flex items-center gap-3">
+                      <ProductThumb product={p} className="size-8" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm">{p.name}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{[productVariantLabel(p), expiryPhrase(p.expiryDate)].filter(Boolean).join(" · ")}</span>
+                      </span>
+                      {badge ? <StatusBadge status={badge} /> : null}
+                    </Link>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
           <Card className="gap-0 shadow-none">
             <CardHeader className="flex-row items-center justify-between pb-3"><CardTitle className="text-base">Low Stock Products</CardTitle><Link to="/inventory/low-stock" className="text-sm font-medium text-primary">View all</Link></CardHeader>
             <CardContent className="space-y-2.5">

@@ -26,6 +26,7 @@ import { actions, useDB } from "@/lib/store";
 import { fmtDateTime, inRange, pageHead, type Range } from "@/lib/format";
 import { exportTablePdf } from "@/lib/pdf";
 import { type AdjustType, type Adjustment } from "@/lib/mock-data";
+import { productVariantLabel, qtyWithUnit } from "@/lib/product-attrs";
 
 const ADJUST_TYPES: AdjustType[] = ["Add", "Remove", "Damage", "Lost", "Correction"];
 
@@ -75,7 +76,10 @@ function AdjustmentsPage() {
     () =>
       db.products
         .filter((p) => p.active)
-        .map((p) => ({ value: p.id, label: `${p.name} · ${p.sku} · stock ${p.stock}` })),
+        .map((p) => {
+          const variant = productVariantLabel(p);
+          return { value: p.id, label: `${p.name}${variant ? ` · ${variant}` : ""} · ${p.sku || "no SKU"} · ${qtyWithUnit(p.stock, p.unit)}` };
+        }),
     [db.products],
   );
 

@@ -7,17 +7,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CurrencyInput, Field, ProductThumb, SearchableSelect } from "@/components/shared";
+import { CurrencyInput, Field, ProductThumb, SearchableSelect, SimpleSelect } from "@/components/shared";
 import { actions, getState, useDB } from "@/lib/store";
 import { compressImageFile } from "@/lib/image-compress";
 import { rs, supplierName } from "@/lib/format";
 import { categoryLabel, parentCategories, subcategoriesOf, type Product } from "@/lib/mock-data";
+import { expiryPhrase, fmtExpiry, PRODUCT_GENDERS, PRODUCT_UNITS, productVariantLabel, SIZE_PRESETS, type ProductGender } from "@/lib/product-attrs";
 
 export type ProductDraft = Omit<Product, "id">;
 
 const blank = (categoryId: string, supplierId: string): ProductDraft => ({
-  name: "", sku: "", barcode: "", categoryId, brand: "", purchasePrice: 0, salePrice: 0, wholesalePrice: 0,
-  stock: 0, minStock: 5, supplierId, image: "", description: "", active: true,
+  name: "", sku: "", barcode: "", categoryId, brand: "", size: "", gender: "", color: "", expiryDate: "", unit: "Piece",
+  purchasePrice: 0, salePrice: 0, wholesalePrice: 0, stock: 0, minStock: 5, supplierId, image: "", description: "", active: true,
 });
 
 type CatDialog = { kind: "category" | "subcategory"; name: string; description: string; parentId: string };
@@ -25,6 +26,7 @@ type SupplierDialog = { name: string; phone: string; address: string; city: stri
 type ProductFieldErrors = Partial<Record<"name" | "sku" | "categoryId" | "subcategoryId" | "supplierId" | "purchasePrice" | "salePrice" | "minStock", string>>;
 
 const emptySupplier: SupplierDialog = { name: "", phone: "", address: "", city: "" };
+const NONE = "__none__";
 
 export function ProductForm({ product, defaultSupplierId }: { product?: Product; defaultSupplierId?: string }) {
   const db = useDB();
@@ -46,7 +48,9 @@ export function ProductForm({ product, defaultSupplierId }: { product?: Product;
     ? product.supplierId
     : (defaultSupplierId && db.suppliers.some((s) => s.id === defaultSupplierId) ? defaultSupplierId : db.suppliers[0]?.id ?? "");
   const [f, setF] = useState<ProductDraft>(
-    product ? { ...product } : blank(parents[0]?.id ?? "", initialSupplier),
+    product
+      ? { ...blank(product.categoryId, product.supplierId), ...product }
+      : blank(parents[0]?.id ?? "", initialSupplier),
   );
   const [parentId, setParentId] = useState(initialParent);
   const [subId, setSubId] = useState(initialSub);
@@ -57,6 +61,10 @@ export function ProductForm({ product, defaultSupplierId }: { product?: Product;
   const [supplierErrors, setSupplierErrors] = useState<Partial<Record<"name" | "phone" | "city", string>>>({});
 
   const subs = useMemo(() => (parentId ? subcategoriesOf(db.categories, parentId) : []), [db.categories, parentId]);
+  const sizeOptions = useMemo(() => {
+    const extra = f.size && !(SIZE_PRESETS as readonly string[]).includes(f.size) ? [{ value: f.size, label: f.size }] : [];
+    return [{ value: NONE, label: "No size" }, ...extra, ...SIZE_PRESETS.map((s) => ({ value: s, label: s }))];
+  }, [f.size]);
 
   const set = <K extends keyof ProductDraft>(k: K, v: ProductDraft[K]) => {
     setF((p) => ({ ...p, [k]: v }));
@@ -103,7 +111,7 @@ export function ProductForm({ product, defaultSupplierId }: { product?: Product;
       return;
     }
     const categoryId = subId || parentId;
-    const payload = { ...f, categoryId, name: f.name.trim(), sku: f.sku.trim().toUpperCase() };
+    const payload = { ...f, categoryId, name: f.name.trim(), sku: f.sku.trim().toUpperCase(), size: f.size.trim(), color: f.color.trim() };
     if (product) {
       actions.updateProduct(product.id, payload);
       toast.success(`${payload.name} updated.`);
@@ -210,7 +218,7 @@ export function ProductForm({ product, defaultSupplierId }: { product?: Product;
           <CardHeader><CardTitle className="text-base">Product information</CardTitle></CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <Field label="Product name" error={errors.name} className="sm:col-span-2">
-              <Input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. iPhone 15 Silicone Cover" className="bg-card" />
+              <Input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Pampers Newborn Pants" className="bg-card" />
             </Field>
             <Field label="SKU" error={errors.sku} hint="Optional · unique code used on labels">
               <Input value={f.sku} onChange={(e) => set("sku", e.target.value)} placeholder="SF-1031" className="bg-card" />
@@ -259,7 +267,7 @@ export function ProductForm({ product, defaultSupplierId }: { product?: Product;
               </div>
             </Field>
             <Field label="Brand">
-              <Input value={f.brand} onChange={(e) => set("brand", e.target.value)} placeholder="Apple, Baseus, Generic..." className="bg-card" />
+              <Input value={f.brand} onChange={(e) => set("brand", e.target.value)} placeholder="Pampers, Johnson's, Mothercare" className="bg-card" />
             </Field>
             <Field label="Supplier" error={errors.supplierId}>
               <div className="flex gap-2">
@@ -274,6 +282,31 @@ export function ProductForm({ product, defaultSupplierId }: { product?: Product;
                   <Plus className="size-4" />
                 </Button>
               </div>
+            </Field>
+            <Field label="Size / age" hint="Optional. Type a size if it is not in the list.">
+              <SearchableSelect
+                value={f.size || NONE}
+                onChange={(v) => set("size", v === NONE ? "" : v)}
+                options={sizeOptions}
+                placeholder="e.g. 3-6M, M, NB"
+                emptyText="No matching size."
+                onCreate={(label) => set("size", label)}
+                createLabel={(q) => `Use “${q}”`}
+              />
+            </Field>
+            <Field label="Gender" hint="Optional">
+              <SearchableSelect
+                value={f.gender || NONE}
+                onChange={(v) => set("gender", (PRODUCT_GENDERS as readonly string[]).includes(v) ? (v as ProductGender) : "")}
+                options={[{ value: NONE, label: "Not set" }, ...PRODUCT_GENDERS.map((g) => ({ value: g, label: g }))]}
+                placeholder="Boy, Girl, Unisex"
+              />
+            </Field>
+            <Field label="Color" hint="Optional">
+              <Input value={f.color} onChange={(e) => set("color", e.target.value)} placeholder="Pink, Blue, White" className="bg-card" />
+            </Field>
+            <Field label="Unit">
+              <SimpleSelect value={f.unit} onChange={(v) => set("unit", v as ProductDraft["unit"])} options={[...PRODUCT_UNITS]} />
             </Field>
             <Field label="Description" className="sm:col-span-2">
               <Textarea value={f.description} onChange={(e) => set("description", e.target.value)} rows={3} placeholder="Short description shown on the product page." className="bg-card" />
@@ -301,6 +334,9 @@ export function ProductForm({ product, defaultSupplierId }: { product?: Product;
             </Field>
             <Field label="Minimum stock" error={errors.minStock} hint="You get a low stock alert below this level">
               <Input type="number" min={0} inputMode="numeric" value={f.minStock || ""} onChange={(e) => set("minStock", Number(e.target.value) || 0)} className="bg-card" />
+            </Field>
+            <Field label="Expiry date" hint="Optional. Formula, food and lotion. A warning shows 30 days before expiry." className="sm:col-span-2">
+              <Input type="date" value={f.expiryDate} onChange={(e) => set("expiryDate", e.target.value)} className="bg-card" />
             </Field>
           </CardContent>
         </Card>
@@ -331,6 +367,8 @@ export function ProductForm({ product, defaultSupplierId }: { product?: Product;
           <CardContent className="space-y-1.5 text-sm">
             <div className="flex justify-between gap-2"><span className="text-muted-foreground">Category</span><span className="text-right">{categoryLabel(db.categories, subId || parentId)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Supplier</span><span className="max-w-[55%] truncate">{supplierName(db.suppliers, f.supplierId)}</span></div>
+            <div className="flex justify-between gap-2"><span className="text-muted-foreground">Details</span><span className="text-right">{[productVariantLabel(f), f.unit].filter(Boolean).join(" · ") || "—"}</span></div>
+            <div className="flex justify-between gap-2"><span className="text-muted-foreground">Expiry</span><span className="text-right">{f.expiryDate ? `${fmtExpiry(f.expiryDate)} · ${expiryPhrase(f.expiryDate)}` : "—"}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Stock value</span><b>{rs(f.stock * f.purchasePrice)}</b></div>
           </CardContent>
         </Card>
@@ -363,7 +401,7 @@ export function ProductForm({ product, defaultSupplierId }: { product?: Product;
                   autoFocus
                   value={catDialog.name}
                   onChange={(e) => setCatDialog({ ...catDialog, name: e.target.value })}
-                  placeholder={catDialog.kind === "subcategory" ? "e.g. Silicone Cases" : "e.g. Mobile Covers"}
+                  placeholder={catDialog.kind === "subcategory" ? "e.g. Newborn" : "e.g. Diapers"}
                 />
               </Field>
               <Field label="Description" hint="Optional">

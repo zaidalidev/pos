@@ -56,9 +56,36 @@ CREATE TABLE IF NOT EXISTS public.platform_fees (
 
 CREATE TABLE IF NOT EXISTS public.shop_bags (
   shop_id text PRIMARY KEY REFERENCES public.shops (id) ON DELETE CASCADE,
+  -- Legacy single blob. New writes use the slice columns below.
   data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  catalogue jsonb NOT NULL DEFAULT '{}'::jsonb,
+  sales jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ledger jsonb NOT NULL DEFAULT '{}'::jsonb,
+  images jsonb NOT NULL DEFAULT '{}'::jsonb,
+  product_count integer NOT NULL DEFAULT 0,
+  sale_count integer NOT NULL DEFAULT 0,
+  customer_count integer NOT NULL DEFAULT 0,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Existing databases: CREATE TABLE IF NOT EXISTS will not add columns. Safe to re-run.
+ALTER TABLE public.shop_bags ADD COLUMN IF NOT EXISTS catalogue jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.shop_bags ADD COLUMN IF NOT EXISTS sales jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.shop_bags ADD COLUMN IF NOT EXISTS ledger jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.shop_bags ADD COLUMN IF NOT EXISTS images jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.shop_bags ADD COLUMN IF NOT EXISTS product_count integer NOT NULL DEFAULT 0;
+ALTER TABLE public.shop_bags ADD COLUMN IF NOT EXISTS sale_count integer NOT NULL DEFAULT 0;
+ALTER TABLE public.shop_bags ADD COLUMN IF NOT EXISTS customer_count integer NOT NULL DEFAULT 0;
+
+UPDATE public.shop_bags
+SET
+  product_count = COALESCE(jsonb_array_length(data->'products'), 0),
+  sale_count = COALESCE(jsonb_array_length(data->'sales'), 0),
+  customer_count = COALESCE(jsonb_array_length(data->'customers'), 0)
+WHERE data <> '{}'::jsonb
+  AND catalogue = '{}'::jsonb
+  AND sales = '{}'::jsonb
+  AND ledger = '{}'::jsonb;
 
 -- Helpers (SECURITY DEFINER avoids RLS recursion when reading profiles)
 CREATE OR REPLACE FUNCTION public.is_platform_admin()

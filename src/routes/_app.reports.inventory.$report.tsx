@@ -15,6 +15,7 @@ import { stockStatus, useDB } from "@/lib/store";
 import { fmtDateTime, inRange, pageHead, rs, toDateInput, type Range } from "@/lib/format";
 import { exportTablePdf } from "@/lib/pdf";
 import { categoryLabel, matchesCategory, parentCategories } from "@/lib/mock-data";
+import { productSearchText } from "@/lib/product-attrs";
 
 export const Route = createFileRoute("/_app/reports/inventory/$report")({
   beforeLoad: ({ params }) => {
@@ -56,7 +57,7 @@ function InventoryReportPage() {
   const productRows = useMemo(() => {
     return filterProducts(report, db.products, sold).filter((p) => {
       if (!matchesCategory(db.categories, p.categoryId, category)) return false;
-      return matchQ(`${p.name} ${p.sku} ${p.barcode} ${p.brand}`);
+      return matchQ(productSearchText(p));
     });
   }, [report, db.products, db.categories, sold, category, q]);
 

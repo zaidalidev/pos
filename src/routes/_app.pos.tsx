@@ -9,11 +9,12 @@ import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CurrencyInput, ProductThumb, SearchInput, EmptyState } from "@/components/shared";
+import { ConfirmDialog, CurrencyInput, ProductThumb, SearchInput, EmptyState } from "@/components/shared";
 import { InvoicePreview, downloadInvoicePdf } from "@/components/invoice-preview";
 import { actions, findAccount, useDB } from "@/lib/store";
 import { pageHead, rs, fmtTime } from "@/lib/format";
 import { accountIdOf, matchesCategory, parentCategories, type AccountType, type Customer, type Sale } from "@/lib/mock-data";
+import { expiryPhrase, expiryStatus, fmtExpiry, productSearchText, productVariantLabel, qtyWithUnit } from "@/lib/product-attrs";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/pos")({
@@ -51,6 +52,7 @@ function POS() {
   const cartRef = useRef<HTMLDivElement>(null);
   const skipReceivedSync = useRef(false);
   const [cartInView, setCartInView] = useState(false);
+  const [expiryConfirmId, setExpiryConfirmId] = useState<string | null>(null);
 
   const availableStock = (productId: string) => {
     const p = db.products.find((x) => x.id === productId);
@@ -65,7 +67,7 @@ function POS() {
         (p) =>
           p.active &&
           matchesCategory(db.categories, p.categoryId, cat) &&
-          (!q || `${p.name} ${p.sku} ${p.brand}`.toLowerCase().includes(q.toLowerCase())),
+          (!q || productSearchText(p).toLowerCase().includes(q.toLowerCase())),
       ),
     [db.products, db.categories, cat, q],
   );
@@ -118,7 +120,7 @@ function POS() {
     setReceived(isCredit ? 0 : total);
   }, [total, isCredit]);
 
-  const add = (id: string) => {
+  const add = (id: string, confirmedExpired = false) => {
     const p = db.products.find((x) => x.id === id);
     if (!p) return;
     const stock = availableStock(id);
@@ -127,6 +129,12 @@ function POS() {
       toast.error(stock <= 0 ? `${p.name} is out of stock.` : `Only ${stock} in stock.`);
       return;
     }
+    const shelf = expiryStatus(p.expiryDate);
+    if (shelf === "expired" && !confirmedExpired && inCart === 0) {
+      setExpiryConfirmId(id);
+      return;
+    }
+    if (shelf === "soon" && inCart === 0) toast.warning(`${p.name} ${expiryPhrase(p.expiryDate).toLowerCase()}.`);
     if (stock - inCart - 1 <= p.minStock && stock - inCart - 1 >= 0) toast.warning(`${p.name} is running low (${stock - inCart - 1} left after this).`);
     setCart((c) => (inCart ? c.map((x) => (x.productId === id ? { ...x, qty: x.qty + 1 } : x)) : [...c, { productId: id, qty: 1 }]));
   };
@@ -238,7 +246,7 @@ function POS() {
           </div>
         )}
         <div className="flex flex-col gap-2 sm:flex-row">
-          <div ref={searchRef} className="flex-1"><SearchInput autoFocus value={q} onChange={setQ} placeholder="Search product name, SKU or brand (F2)" /></div>
+          <div ref={searchRef} className="flex-1"><SearchInput autoFocus value={q} onChange={setQ} placeholder="Search name, size, gender or brand (F2)" /></div>
           
         </div>
         <div className="flex gap-2 overflow-x-auto scrollbar-none">
@@ -253,16 +261,19 @@ function POS() {
                 const stock = availableStock(p.id);
                 const out = stock <= 0;
                 const low = !out && stock <= p.minStock;
+                const shelf = expiryStatus(p.expiryDate);
+                const variant = productVariantLabel(p);
                 return (
                   <button key={p.id} disabled={out} onClick={() => add(p.id)} className={cn("group flex flex-col rounded-lg border bg-card p-3 text-left transition-colors", out ? "cursor-not-allowed opacity-55" : "hover:border-primary")}>
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-start justify-between gap-2">
                       <ProductThumb product={p} />
-                      {out ? <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">Out of stock</span> : low ? <span className="flex items-center gap-1 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning"><AlertTriangle className="size-3" />Low</span> : null}
+                      {out ? <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">Out of stock</span> : shelf === "expired" ? <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">Expired</span> : low ? <span className="flex items-center gap-1 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning"><AlertTriangle className="size-3" />Low</span> : shelf === "soon" ? <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning">Expiring</span> : null}
                     </div>
-                    <p className="mt-2 line-clamp-2 min-h-10 text-sm font-medium leading-5">{p.name}</p>
+                    <p className="mt-2 line-clamp-2 text-sm font-medium leading-5">{p.name}</p>
+                    <p className={cn("line-clamp-1 min-h-4 text-xs", variant ? "text-muted-foreground" : "invisible")}>{variant || "—"}</p>
                     <div className="mt-1 flex items-end justify-between">
                       <span className="font-bold text-primary">{rs(p.salePrice)}</span>
-                      <span className="text-xs text-muted-foreground">{stock} left</span>
+                      <span className="text-xs text-muted-foreground">{qtyWithUnit(stock, p.unit)}</span>
                     </div>
                   </button>
                 );
@@ -314,7 +325,7 @@ function POS() {
         <div className="max-h-[calc(3*3.5rem)] min-h-[120px] overflow-y-auto">
           {lines.length === 0 ? <p className="px-4 py-10 text-center text-sm text-muted-foreground">Cart is empty. Tap a product or scan a barcode.</p> : lines.map((l) => (
             <div key={l.productId} className="flex h-14 items-center gap-2 border-b px-2">
-              <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{l.product.name}</p><p className="text-xs text-muted-foreground">{rs(l.product.salePrice)} × {l.qty}</p></div>
+              <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{l.product.name}</p><p className="truncate text-xs text-muted-foreground">{[productVariantLabel(l.product), `${rs(l.product.salePrice)} × ${l.qty}`].filter(Boolean).join(" · ")}</p></div>
               <div className="flex items-center rounded-md border">
                 <button className="grid size-7 place-items-center hover:bg-muted" onClick={() => setQty(l.productId, l.qty - 1)} aria-label="Decrease"><Minus className="size-3" /></button>
                 <input value={l.qty} onChange={(e) => setQty(l.productId, Number(e.target.value) || 0)} className="w-8 bg-transparent text-center text-sm outline-none" aria-label="Quantity" />
@@ -401,6 +412,24 @@ function POS() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!expiryConfirmId}
+        onOpenChange={(o) => { if (!o) setExpiryConfirmId(null); }}
+        title="This product is expired"
+        description={(() => {
+          const p = db.products.find((x) => x.id === expiryConfirmId);
+          if (!p) return "This item is past its expiry date. Add it to the cart only if you mean to sell it.";
+          const when = p.expiryDate ? ` on ${fmtExpiry(p.expiryDate)} (${expiryPhrase(p.expiryDate).toLowerCase()})` : "";
+          return `${p.name} is past its expiry date${when}. Add it to the cart only if you mean to sell it.`;
+        })()}
+        confirmText="Sell anyway"
+        onConfirm={() => {
+          const id = expiryConfirmId;
+          setExpiryConfirmId(null);
+          if (id) add(id, true);
+        }}
+      />
     </div>
   );
 }
